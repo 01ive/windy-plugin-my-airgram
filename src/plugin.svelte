@@ -8,7 +8,7 @@
     >
     { title }
     </div>
-    Put your plugin code here
+    Hello <b>Olive</b> !
 </section>
 <script lang="ts">
     import bcast from "@windy/broadcast";

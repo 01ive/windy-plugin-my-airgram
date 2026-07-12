@@ -35,5 +35,10 @@
     "homepage": "https://docs.windy-plugins.com/",
     "dependencies": {
         "@windycom/plugin-devtools": "^3.0.3"
+    },
+    "allowScripts": {
+        "@swc/core@1.15.43": true,
+        "svelte-preprocess@5.1.4": true,
+        "unrs-resolver@1.12.2": true
     }
 }
