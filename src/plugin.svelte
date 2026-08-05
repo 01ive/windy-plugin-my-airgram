@@ -12,6 +12,7 @@
     <div class="top-bar">
         <span style="display: flex; align-items: center; gap: 10px;">
             <button id="config-btn" title="Configuration" on:click={openConfig}>⚙️</button>
+            <button id="toggle-step-btn" on:click={toggleStep} title="Changer l'intervalle">{currentStep}h</button>
             <div class="greeting">Hello <b>Olive</b> !</div>
         </span>
     </div>
@@ -143,15 +144,22 @@
     import config from './pluginConfig';
     const { title } = config;
 
-    // --- GESTION DE LA CONFIGURATION ---
     let appConfig = {
         windLight: 15, windMod: 30, windStrong: 50, windGale: 100,
         lapse1: 0.6, lapse2: 0.8, lapse3: 1.0, lapse4: 1.2, lapse5: 1.4,
-        skewFactor: 0.08, parcelOffset: 0.0 // Offset remis à 0, grâce à l'extrapolation correcte !
+        skewFactor: 0.08, parcelOffset: 0.0 
     };
     
     let tempConfig = { ...appConfig };
     let showConfig = false;
+    let currentStep = 3;
+
+    const toggleStep = () => {
+        currentStep = currentStep === 3 ? 1 : 3;
+        if (lat !== null && lon !== null) {
+            fetchWindGrid(lat, lon);
+        }
+    };
 
     const openConfig = () => { tempConfig = { ...appConfig }; showConfig = true; };
     const closeConfig = () => { showConfig = false; };
@@ -170,14 +178,23 @@
     let currentModel: string = "";
     let groundElevation: number = 0; 
     
-    // Structure de la grille 2D
     let times: Array<{ label: string, index: number }> = [];
     let levels: Array<{ key: string, alt: number, label: string, isSurface: boolean, hpa: number }> = [];
     let grid: Array<Array<{ speedKmh: number, dir: number, colorClass: string } | null>> = [];
     
-    // Données Thermodynamiques
     let hourlyProfiles: Array<any> = []; 
-    let thermalCeilings: Array<{ alt: number, isCloud: boolean, hasThermal: boolean }> = [];
+    // On étend l'interface pour stocker TOUTES les variables liées au thermique de l'heure
+    let thermalCeilings: Array<{ 
+        alt: number, 
+        isCloud: boolean, 
+        hasThermal: boolean, 
+        parcelPath: Array<any>,
+        cloudZone: Array<number> | null,
+        cloudBaseAlt: number,
+        ceilingZ: number,
+        getEnvAtZForHour: Function
+    }> = [];
+    
     let selectedHourIndex: number | null = null;
     let sondageChartInstance: any = null;
 
@@ -196,23 +213,32 @@
         return (b * alpha) / (a - alpha);
     };
 
-    // --- MOTEUR THERMODYNAMIQUE GLOBAL (UTILISÉ PAR LA TABLE) ---
+    // --- MOTEUR THERMODYNAMIQUE CENTRALISÉ ---
+    // Cette fonction calcule tout une seule fois par heure (pour la table ET le graphique)
     const calculateThermals = () => {
         thermalCeilings = [];
         for (let j = 0; j < times.length; j++) {
             const envData = hourlyProfiles[j];
             if (!envData || envData.length === 0) {
-                thermalCeilings.push({ alt: 0, isCloud: false, hasThermal: false });
+                thermalCeilings.push({ 
+                    alt: 0, isCloud: false, hasThermal: false, 
+                    parcelPath: [], cloudZone: null, cloudBaseAlt: 0, ceilingZ: 0, 
+                    getEnvAtZForHour: () => null 
+                });
                 continue;
             }
 
             const zBase = groundElevation; 
 
-            // Interpolation propre sur le profil (qui contient déjà le sol extrapolé)
             const getEnvAtZForHour = (z: number) => {
                 let l1 = [...envData].reverse().find(d => d.z <= z);
                 let l2 = envData.find(d => d.z >= z);
-                if (!l1 && l2) return l2; // Fallback sécurité
+                
+                // Extrapolation vers le bas si on fouille sous le sol du modèle (pour le fond du graphique)
+                if (!l1 && l2) {
+                    const dz = l2.z - z;
+                    return { z: z, hpa: l2.hpa + (dz / 8.5), t: l2.t + dz * 0.0098, td: l2.td + dz * 0.002 };
+                }
                 if (!l2 && l1) return l1;
                 if (l1.z === l2.z) return l1;
                 
@@ -231,8 +257,11 @@
             
             let cloudBaseAlt = zBase + Math.max(0, (tBase - tdBase) * 125);
             let pT = tBase + appConfig.parcelOffset;
-            let exactAlt = zBase;
+            let ceilingZ = zBase;
             let isCloudCapped = false;
+            let cloudZone = null;
+            let parcelPath = [{ z: zBase, t: pT, hpa: envAtGround.hpa }];
+            
             const maxZ = envData[envData.length - 1].z;
 
             // Ascension de la particule
@@ -259,19 +288,32 @@
                 const entrainment = 0.01; 
                 pT = pT * (1 - entrainment) + envAtZ.t * entrainment;
 
-                exactAlt = currZ;
+                parcelPath.push({ z: currZ, t: pT, hpa: envAtZ.hpa });
+                ceilingZ = currZ;
+                
                 if (pT <= envAtZ.t) break;
             }
 
+            if (ceilingZ > cloudBaseAlt + 20) {
+                cloudZone = [cloudBaseAlt, ceilingZ];
+            }
+
+            let exactAlt = ceilingZ;
             if (exactAlt > cloudBaseAlt) {
                 exactAlt = Math.max(cloudBaseAlt, zBase); 
                 isCloudCapped = true;
             }
 
+            // On stocke TOUT le résultat pour l'heure en cours
             thermalCeilings.push({ 
                 alt: Math.round(exactAlt), 
                 isCloud: isCloudCapped, 
-                hasThermal: exactAlt > zBase + 50 
+                hasThermal: ceilingZ > zBase + 50,
+                parcelPath,
+                cloudZone,
+                cloudBaseAlt,
+                ceilingZ,
+                getEnvAtZForHour
             });
         }
     };
@@ -285,7 +327,7 @@
             currentModel = model;
             const currentTime = store.get('timestamp'); 
             
-            const forecast = await getMeteogramForecastData(model, { lat: latitude, lon: longitude, step: 3 });
+            const forecast = await getMeteogramForecastData(model, { lat: latitude, lon: longitude, step: currentStep });
             
             if (!forecast || !forecast.data) { status = "Données indisponibles."; return; }
 
@@ -303,13 +345,14 @@
                 });
             }
 
-            const stepsToShow = Math.min(24, timeArray.length - startIndex);
+            const maxSteps = currentStep === 1 ? 24 : 40;
+            const stepsToShow = Math.min(maxSteps, timeArray.length - startIndex);
+            
             for(let i = 0; i < stepsToShow; i++) {
                 const d = new Date(timeArray[startIndex + i]);
                 times.push({ label: `${d.getHours()}h`, index: startIndex + i });
             }
 
-            // 1. GÉNÉRATION DES NIVEAUX DE LA TABLE (INCLUT LA SURFACE)
             const tempLevels = [];
             for (const key of Object.keys(rawData)) {
                 if (key.startsWith('wind_u-')) {
@@ -340,12 +383,10 @@
             tempLevels.sort((a, b) => b.alt - a.alt); 
             levels = tempLevels.filter(l => l.alt <= 10000);
 
-            // 2. PARCOURS TEMPOREL POUR REMPLIR GRILLE + THERMO
             for (let j = 0; j < times.length; j++) {
                 const dataIndex = times[j].index;
                 let envData = []; 
                 
-                // Remplissage de la grille des vents (On parcourt TOUS les niveaux, y compris Surface)
                 for (let i = 0; i < levels.length; i++) {
                     const l = levels[i];
                     if (!grid[i]) grid[i] = [];
@@ -359,7 +400,6 @@
                     } else { grid[i][j] = null; }
                 }
 
-                // Remplissage Profil Thermodynamique (On EXCLUT le niveau surface natif pour éviter les erreurs du modèle)
                 for (let i = levels.length - 1; i >= 0; i--) {
                     const l = levels[i];
                     if (l.isSurface) continue; 
@@ -374,15 +414,14 @@
                     }
                 }
 
-                // EXTRAPOLATION ADIABATIQUE SÈCHE JUSQU'AU SOL GÉOGRAPHIQUE
                 if (envData.length > 0) {
-                    const lowest = envData[0]; // Le point le plus bas (puisqu'on a bouclé à l'envers)
+                    const lowest = envData[0];
                     if (groundElevation < lowest.z) {
                         const dz = lowest.z - groundElevation;
                         envData.unshift({
                             z: groundElevation,
                             hpa: lowest.hpa + (dz / 8.5),
-                            t: lowest.t + dz * 0.0098, // Adiabatique Sèche (+0.98°C/100m)
+                            t: lowest.t + dz * 0.0098,
                             td: lowest.td + dz * 0.002
                         });
                     }
@@ -404,83 +443,37 @@
         }
     };
 
-    // --- LOGIQUE DU GRAPHIQUE ÉMAGRAMME ---
     const selectHour = async (index: number) => {
         selectedHourIndex = index;
         await tick();
         drawSondage(index);
     };
 
+    // --- LE GRAPHIQUE SE CONTENTE DE DESSINER LES DONNÉES PRÉ-CALCULÉES ---
     const drawSondage = (hourIndex: number) => {
         const ChartLib = (window as any).Chart;
         if (!ChartLib) { setTimeout(() => drawSondage(hourIndex), 200); return; }
 
         const envData = hourlyProfiles[hourIndex];
-        if (!envData || envData.length === 0) return;
+        const thermal = thermalCeilings[hourIndex]; // On récupère la donnée de la table !
+        if (!envData || envData.length === 0 || !thermal) return;
 
         const zBase = groundElevation;
-
-        const getEnvAtZ = (z: number) => {
-            let l1 = [...envData].reverse().find(d => d.z <= z);
-            let l2 = envData.find(d => d.z >= z);
-            if (!l1 && l2) return l2;
-            if (!l2 && l1) return l1;
-            if (l1.z === l2.z) return l1;
-            
-            let ratio = (z - l1.z) / (l2.z - l1.z);
-            return {
-                z: z, hpa: l1.hpa + ratio * (l2.hpa - l1.hpa),
-                t: l1.t + ratio * (l2.t - l1.t), td: l1.td + ratio * (l2.td - l1.td)
-            };
-        };
-
-        const envAtGround = getEnvAtZ(zBase);
-        const tBase = envAtGround.t;
-        const tdBase = envAtGround.td;
-        let cloudBaseAlt = zBase + Math.max(0, (tBase - tdBase) * 125);
-        let cloudZone = null;
-        let parcelPath = [];
-        let ceilingZ = zBase;
-
-        let pT = tBase + appConfig.parcelOffset;
-        let maxZ = envData[envData.length - 1].z;
-        parcelPath.push({ z: zBase, t: pT, hpa: envAtGround.hpa });
-
-        for (let currZ = zBase + 20; currZ <= maxZ; currZ += 20) {
-            let isCloud = currZ >= cloudBaseAlt;
-            let envAtZ = getEnvAtZ(currZ);
-            let lapse;
-            
-            if (isCloud) {
-                const Tk = pT + 273.15;
-                const es = 6.112 * Math.exp((17.67 * pT) / (pT + 243.5));
-                const ws = 0.622 * es / (envAtZ.hpa - es);
-                const L = 2501000 - 2370 * pT;
-                const num = 1 + (L * ws) / (287.05 * Tk);
-                const den = 1 + (0.622 * L * L * ws) / (1004 * 287.05 * Tk * Tk);
-                lapse = -(9.80665 / 1004) * (num / den);
-            } else { lapse = -0.0098; }
-            
-            pT += lapse * 20;
-            const entrainment = 0.01; 
-            pT = pT * (1 - entrainment) + envAtZ.t * entrainment;
-
-            parcelPath.push({ z: currZ, t: pT, hpa: envAtZ.hpa });
-            ceilingZ = currZ; 
-            
-            if (pT <= envAtZ.t) break;
-        }
-
-        if (ceilingZ > cloudBaseAlt + 20) cloudZone = [cloudBaseAlt, ceilingZ];
+        const getEnvAtZ = thermal.getEnvAtZForHour; // On utilise exactement la même interpolation
 
         const zBottom = Math.floor(zBase / 500) * 500;
         const pBottom = getEnvAtZ(zBottom).hpa;
         const skew = appConfig.skewFactor;
         const applySkew = (t: number, hpa: number) => skew === 0 ? t : t + (pBottom - hpa) * skew;
 
+        // Le chemin de la particule est extrait de la structure `thermal` sans aucun recalcul
         const envPoints = envData.map((d: any) => ({ x: applySkew(d.t, d.hpa), y: d.z }));
         const dewPoints = envData.map((d: any) => ({ x: applySkew(d.td, d.hpa), y: d.z }));
-        const parcelChartPoints = parcelPath.map(p => ({ x: applySkew(p.t, p.hpa), y: p.z }));
+        const parcelChartPoints = thermal.parcelPath.map((p: any) => ({ x: applySkew(p.t, p.hpa), y: p.z }));
+
+        const ceilingZ = thermal.ceilingZ;
+        const cloudBaseAlt = thermal.cloudBaseAlt;
+        const cloudZone = thermal.cloudZone;
 
         const canvas = document.getElementById('sondageChart') as HTMLCanvasElement;
         if (!canvas) return;
@@ -541,7 +534,6 @@
                     });
                     ctx.restore();
 
-                    // TRACÉ DU SOL
                     const ySol = y.getPixelForValue(zBase);
                     if (ySol >= chartArea.top && ySol <= chartArea.bottom) {
                         ctx.save();
@@ -605,6 +597,12 @@
         });
     };
 
+    const onSettingsChange = () => {
+        if (lat !== null && lon !== null) {
+            fetchWindGrid(lat, lon);
+        }
+    };
+
     const onPickerLocation = (location: any) => {
         if (location) { lat = location.lat; lon = location.lon; fetchWindGrid(lat, lon); }
         else { lat = null; lon = null; times = []; levels = []; grid = []; hourlyProfiles = []; status = "Cliquez sur la carte."; }
@@ -616,15 +614,20 @@
             script.id = 'chartjs-script'; script.src = 'https://cdn.jsdelivr.net/npm/chart.js';
             document.head.appendChild(script);
         }
+        
         store.on('pickerLocation', onPickerLocation);
-        store.on('timestamp', () => { if(lat) fetchWindGrid(lat, lon); }); 
-        store.on('product', () => { if(lat) fetchWindGrid(lat, lon); });   
+        store.on('timestamp', onSettingsChange); 
+        store.on('product', onSettingsChange);   
         
         const currentLoc = store.get('pickerLocation');
         if (currentLoc) onPickerLocation(currentLoc);
     });
 
-    onDestroy(() => { store.off('pickerLocation', onPickerLocation); });
+    onDestroy(() => { 
+        store.off('pickerLocation', onPickerLocation); 
+        store.off('timestamp', onSettingsChange);
+        store.off('product', onSettingsChange);
+    });
 </script>
 
 <style lang="less">
@@ -632,6 +635,20 @@
     .top-bar { display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px; }
     #config-btn { background: none; border: none; font-size: 20px; cursor: pointer; transition: transform 0.3s ease; }
     #config-btn:hover { transform: rotate(45deg); }
+    
+    /* Bouton bascule 1h/3h */
+    #toggle-step-btn {
+        padding: 4px 8px;
+        font-size: 13px;
+        cursor: pointer;
+        border: 1px solid #ccc;
+        border-radius: 6px;
+        background-color: #fff;
+        color: #2980b9;
+        font-weight: bold;
+        transition: all 0.2s;
+    }
+    #toggle-step-btn:hover { background-color: #e8f4f8; border-color: #2980b9; }
 
     /* MODALE DE CONFIG */
     #config-modal { position: absolute; top: 50px; left: 15px; background: white; padding: 15px; border-radius: 8px; box-shadow: 0 4px 20px rgba(0,0,0,0.2); z-index: 1000; width: 280px; border: 1px solid #ddd; font-size: 13px; }
