@@ -11,51 +11,143 @@
     
     <div class="greeting">Hello <b>Olive</b> !</div>
 
-    <!-- Affichage conditionnel des coordonnées si elles sont définies -->
     {#if lat !== null && lon !== null}
-        <div class="coordinates">
-            Coordonnées GPS : <strong>{lat.toFixed(5)}</strong>, <strong>{lon.toFixed(5)}</strong>
+        <div class="box">
+            📍 <b>GPS :</b> {lat.toFixed(4)}, {lon.toFixed(4)}
+        </div>
+
+        <div class="box wind-box">
+            {#if windSpeed !== null && windDir !== null}
+                <b>Vitesse :</b> {windSpeed} m/s <br>
+                <b>Orientation :</b> {windDir}°
+            {:else}
+                <i style="color: #d35400;">{status}</i>
+            {/if}
+        </div>
+    {:else}
+        <div class="box">
+            <i>Cliquez sur la carte (Calque Vent) pour placer le repère.</i>
         </div>
     {/if}
 </section>
 
 <script lang="ts">
     import bcast from "@windy/broadcast";
-    import { map } from "@windy/map"; // Import de l'instance de la carte
+    import store from "@windy/store";
+    import { getLatLonInterpolator } from "@windy/interpolator";
+    import { wind2obj } from "@windy/utils";
     import { onDestroy, onMount } from 'svelte';
 
     import config from './pluginConfig';
 
     const { title } = config;
 
-    // Variables réactives Svelte pour stocker les coordonnées
     let lat: number | null = null;
     let lon: number | null = null;
+    let windSpeed: number | null = null;
+    let windDir: number | null = null;
+    
+    let status: string = "";
 
-    // Fonction déclenchée lors d'un clic sur la carte
-    const onMapClick = (event: any) => {
-        lat = event.latlng.lat;
-        lon = event.latlng.lng;
+    // Méthode "FlyXC" : Extraction à la volée sans jamais mettre l'interpolateur en cache
+    const extractData = async (latitude: number, longitude: number) => {
+        if (latitude === null || longitude === null) return;
+        
+        status = "Lecture des données...";
+
+        try {
+            // Création d'un interpolateur tout neuf, parfaitement synchronisé avec l'affichage
+            const interpolator = await getLatLonInterpolator();
+            
+            if (!interpolator) {
+                status = "Erreur : Interpolateur indisponible.";
+                return;
+            }
+
+            const data = await interpolator({ lat: latitude, lon: longitude });
+
+            if (data) {
+                let speed: number | undefined;
+                let direction: number | undefined;
+
+                // Cas 1 : Windy renvoie un tableau de composantes vectorielles [u, v]
+                if (Array.isArray(data) && data.length >= 2) {
+                    const obj = wind2obj(data);
+                    speed = obj.wind;
+                    direction = obj.dir;
+                } 
+                // Cas 2 : Sécurité pour Windy v40+ qui peut renvoyer directement un objet
+                else if (typeof data === 'object' && !Array.isArray(data)) {
+                    speed = (data as any).wind !== undefined ? (data as any).wind : (data as any).speed;
+                    direction = (data as any).dir !== undefined ? (data as any).dir : (data as any).direction;
+                }
+
+                if (speed !== undefined && direction !== undefined) {
+                    windSpeed = parseFloat(speed.toFixed(1));
+                    windDir = Math.round(direction);
+                    status = "Terminé.";
+                    return; // Succès absolu
+                }
+            }
+            
+            // Si les données ne correspondent pas au vent
+            windSpeed = null;
+            windDir = null;
+            status = "⚠️ Sélectionnez le calque 'Vent' pour voir ces données.";
+
+        } catch (error) {
+            console.error("Erreur d'extraction :", error);
+            status = "Erreur de traitement.";
+        }
     };
 
-    export const onopen = (params: unknown) => {
-        // Optionnel : Gérer l'ouverture depuis le menu contextuel de la carte
-        // Si le plugin est ouvert via un clic droit "Ouvrir le plugin", Windy passe les coordonnées dans "params"
-        if (params && typeof params === 'object' && 'lat' in params && 'lon' in params) {
-            lat = (params as any).lat;
-            lon = (params as any).lon;
+    // Écouteur principal branché sur la sonde native de Windy
+    const onPickerLocation = (location: any) => {
+        if (location) {
+            lat = location.lat;
+            lon = location.lon;
+            extractData(lat, lon);
+        } else {
+            // Se déclenche si l'utilisateur ferme la sonde avec la croix rouge
+            lat = null;
+            lon = null;
+            windSpeed = null;
+            windDir = null;
+            status = "Cliquez sur la carte.";
+        }
+    };
+
+    // Rafraîchit les données si l'utilisateur change les réglages de la carte sous la sonde
+    const refreshCurrentLocation = () => {
+        if (lat !== null && lon !== null) {
+            // Léger délai pour s'assurer que les tuiles WebGL ont bien changé
+            setTimeout(() => extractData(lat!, lon!), 300);
         }
     };
 
     onMount(() => {
-        // On attache l'écouteur d'événement au montage du composant
-        map.on('click', onMapClick);
+        // Branchement de tous les événements selon l'architecture FlyXC Sounding
+        store.on('pickerLocation', onPickerLocation);
+        
+        store.on('overlay', refreshCurrentLocation);
+        store.on('timestamp', refreshCurrentLocation);
+        store.on('level', refreshCurrentLocation);
+        bcast.on('redrawFinished', refreshCurrentLocation);
+        
+        // Sécurité : On vérifie si la sonde était DÉJÀ ouverte avant de lancer le plugin
+        const currentLoc = store.get('pickerLocation');
+        if (currentLoc) {
+            onPickerLocation(currentLoc);
+        }
     });
 
     onDestroy(() => {
-        // Très important : retirer l'écouteur lors de la fermeture/destruction du plugin 
-        // pour éviter les fuites de mémoire et les déclenchements multiples
-        map.off('click', onMapClick);
+        // Nettoyage impératif pour éviter les fuites de mémoire
+        store.off('pickerLocation', onPickerLocation);
+        store.off('overlay', refreshCurrentLocation);
+        store.off('timestamp', refreshCurrentLocation);
+        store.off('level', refreshCurrentLocation);
+        bcast.off('redrawFinished', refreshCurrentLocation);
     });
 </script>
 
@@ -64,10 +156,18 @@
         margin-bottom: 10px;
     }
     
-    .coordinates {
-        padding: 10px;
-        background-color: rgba(0, 0, 0, 0.1);
-        border-radius: 5px;
-        font-size: 0.9em;
+    .box {
+        margin-top: 10px;
+        padding: 12px;
+        background-color: rgba(0, 0, 0, 0.05);
+        border: 1px solid rgba(0, 0, 0, 0.1);
+        border-radius: 6px;
+        font-size: 0.95em;
+        line-height: 1.5;
+    }
+
+    .wind-box {
+        background-color: rgba(41, 128, 185, 0.1);
+        border-color: rgba(41, 128, 185, 0.2);
     }
 </style>
