@@ -48,7 +48,7 @@
         <div class="box">
             📍 <b>GPS :</b> {lat.toFixed(4)}, {lon.toFixed(4)}
             <br>
-            <small style="color: gray;">Modèle : {currentModel.toUpperCase()}</small>
+            <small style="color: gray;">Modèle : {currentModel.toUpperCase()} | Sol : {groundElevation}m</small>
         </div>
 
         <div class="box wind-box">
@@ -147,7 +147,7 @@
     let appConfig = {
         windLight: 15, windMod: 30, windStrong: 50, windGale: 100,
         lapse1: 0.6, lapse2: 0.8, lapse3: 1.0, lapse4: 1.2, lapse5: 1.4,
-        skewFactor: 0.08, parcelOffset: 0.0
+        skewFactor: 0.08, parcelOffset: 0.0 // Plus besoin d'un énorme offset !
     };
     
     let tempConfig = { ...appConfig };
@@ -158,7 +158,6 @@
     const saveConfig = () => {
         appConfig = { ...tempConfig };
         showConfig = false;
-        // On recalcule tout si les données sont déjà là
         if (hourlyProfiles.length > 0) {
             calculateThermals();
             if (selectedHourIndex !== null) drawSondage(selectedHourIndex);
@@ -169,6 +168,7 @@
     let lon: number | null = null;
     let status: string = "";
     let currentModel: string = "";
+    let groundElevation: number = 0; // Élévation du terrain
     
     // Structure de la grille 2D
     let times: Array<{ label: string, index: number }> = [];
@@ -196,7 +196,7 @@
         return (b * alpha) / (a - alpha);
     };
 
-    // --- MOTEUR THERMODYNAMIQUE ---
+    // --- MOTEUR THERMODYNAMIQUE AMÉLIORÉ ---
     const calculateThermals = () => {
         thermalCeilings = [];
         for (let j = 0; j < times.length; j++) {
@@ -206,27 +206,47 @@
                 continue;
             }
 
-            const zBase = envData[0].z;
-            const tBase = envData[0].t;
-            const tdBase = envData[0].td;
+            const zBase = groundElevation; 
+
+            // FONCTION CLÉ : Extrapole vers le sol avec l'adiabatique sèche si on est sous le modèle
+            const getEnvAtZForHour = (z: number) => {
+                let l1 = [...envData].reverse().find(d => d.z <= z); // Plus bas sous Z
+                let l2 = envData.find(d => d.z >= z); // Plus proche au-dessus de Z
+
+                if (!l1 && l2) {
+                    // Si on est plus bas que la plus basse couche du modèle : Extrapolation au sol
+                    const dz = l2.z - z;
+                    return { 
+                        z: z, 
+                        hpa: l2.hpa + (dz / 8.5), 
+                        t: l2.t + dz * 0.0098, // Gradient Adiabatique Sec (+0.98°C/100m vers le bas)
+                        td: l2.td + dz * 0.002 // Gradient du point de rosée
+                    };
+                }
+                if (!l2 && l1) return l1;
+                if (l1.z === l2.z) return l1;
+                
+                // Interpolation classique entre deux couches
+                let ratio = (z - l1.z) / (l2.z - l1.z);
+                return { 
+                    z: z,
+                    hpa: l1.hpa + ratio * (l2.hpa - l1.hpa), 
+                    t: l1.t + ratio * (l2.t - l1.t),
+                    td: l1.td + ratio * (l2.td - l1.td)
+                };
+            };
+
+            const envAtGround = getEnvAtZForHour(zBase);
+            const tBase = envAtGround.t;
+            const tdBase = envAtGround.td;
+            
             let cloudBaseAlt = zBase + Math.max(0, (tBase - tdBase) * 125);
             let pT = tBase + appConfig.parcelOffset;
             let exactAlt = zBase;
             let isCloudCapped = false;
-
-            const getEnvAtZForHour = (z: number) => {
-                let l1 = [...envData].reverse().find(d => d.z <= z);
-                let l2 = envData.find(d => d.z >= z);
-                if (!l1) return l2 || envData[0];
-                if (!l2) return l1;
-                if (l1.z === l2.z) return l1;
-                let ratio = (z - l1.z) / (l2.z - l1.z);
-                return { hpa: l1.hpa + ratio * (l2.hpa - l1.hpa), t: l1.t + ratio * (l2.t - l1.t) };
-            };
-
             const maxZ = envData[envData.length - 1].z;
 
-            // Ascension avec entraînement
+            // Ascension de la particule
             for (let currZ = zBase + 20; currZ <= maxZ; currZ += 20) {
                 let isCloud = currZ >= cloudBaseAlt;
                 let envAtZ = getEnvAtZForHour(currZ);
@@ -246,6 +266,7 @@
                 
                 pT += lapse * 20;
                 
+                // Dilution avec l'air ambiant (Entraînement 1%)
                 const entrainment = 0.01; 
                 pT = pT * (1 - entrainment) + envAtZ.t * entrainment;
 
@@ -279,6 +300,9 @@
             
             if (!forecast || !forecast.data) { status = "Données indisponibles."; return; }
 
+            // Récupération de l'élévation du sol du modèle
+            groundElevation = Math.round(forecast.data.header?.modelElevation || forecast.data.data?.header?.modelElevation || 0);
+
             const rawData = forecast.data.data || forecast.data;
             const timeArray = rawData.ts || rawData.hours || rawData.time;
             
@@ -297,30 +321,25 @@
                 times.push({ label: `${d.getHours()}h`, index: startIndex + i });
             }
 
+            // Filtrage des niveaux (on exclut volontairement "surface" des sondages thermodynamiques pour éviter les valeurs aberrantes)
             const tempLevels = [];
             for (const key of Object.keys(rawData)) {
                 if (key.startsWith('temp-')) {
                     const level = key.split('-')[1]; 
-                    let alt = 0; let displayLevel = level.endsWith('h') ? `${level}Pa` : level;
-                    let isSurface = false; let hpa = 1013;
+                    if (level === 'surface' || level.includes('m')) continue; // On l'ignore pour l'air libre
+                    
+                    let alt = 0; 
+                    let hpa = parseInt(level);
+                    let displayLevel = `${level}Pa`;
                     
                     const gh = rawData[`gh-${level}`];
                     if (gh && gh[startIndex] !== undefined) {
                         alt = Math.round(gh[startIndex]);
-                        if (level.endsWith('h')) hpa = parseInt(level);
-                    } else {
-                        if (level === 'surface' || level.includes('10m') || level.includes('2m')) {
-                            alt = Math.round(forecast.data.header?.modelElevation || 0);
-                            displayLevel = `${alt}m (Sol)`; isSurface = true;
-                            hpa = Math.round(1013.25 * Math.pow(1 - 2.25577e-5 * alt, 5.25588));
-                        } else if (level.endsWith('h')) {
-                            hpa = parseInt(level);
-                            if (!isNaN(hpa)) alt = Math.round(44330 * (1 - Math.pow(hpa / 1013.25, 0.1903)));
-                            displayLevel = `${alt}m`;
-                        }
+                    } else if (!isNaN(hpa)) {
+                        alt = Math.round(44330 * (1 - Math.pow(hpa / 1013.25, 0.1903)));
                     }
-                    if (!isSurface && displayLevel !== 'Sol') displayLevel = `${alt}m`;
-                    tempLevels.push({ key: level, alt, label: displayLevel, isSurface, hpa });
+                    displayLevel = `${alt}m`;
+                    tempLevels.push({ key: level, alt, label: displayLevel, isSurface: false, hpa });
                 }
             }
 
@@ -380,15 +399,22 @@
         const ChartLib = (window as any).Chart;
         if (!ChartLib) { setTimeout(() => drawSondage(hourIndex), 200); return; }
 
-        const envData = hourlyProfiles[hourIndex];
-        if (!envData || envData.length === 0) return;
+        const rawEnvData = hourlyProfiles[hourIndex];
+        if (!rawEnvData || rawEnvData.length === 0) return;
+
+        const zBase = groundElevation;
 
         const getEnvAtZ = (z: number) => {
-            let l1 = [...envData].reverse().find(d => d.z <= z);
-            let l2 = envData.find(d => d.z >= z);
-            if (!l1) return l2 || envData[0];
-            if (!l2) return l1;
+            let l1 = [...rawEnvData].reverse().find(d => d.z <= z);
+            let l2 = rawEnvData.find(d => d.z >= z);
+            
+            if (!l1 && l2) {
+                const dz = l2.z - z;
+                return { z: z, hpa: l2.hpa + (dz / 8.5), t: l2.t + dz * 0.0098, td: l2.td + dz * 0.002 };
+            }
+            if (!l2 && l1) return l1;
             if (l1.z === l2.z) return l1;
+            
             let ratio = (z - l1.z) / (l2.z - l1.z);
             return {
                 z: z, hpa: l1.hpa + ratio * (l2.hpa - l1.hpa),
@@ -396,17 +422,22 @@
             };
         };
 
-        const zBase = envData[0].z;
-        const tBase = envData[0].t;
-        const tdBase = envData[0].td;
+        // On injecte le point de base théorique au sol dans les données affichées pour que la ligne noire descende jusqu'en bas
+        let displayEnvData = [...rawEnvData];
+        if (zBase < displayEnvData[0].z) {
+            displayEnvData.unshift(getEnvAtZ(zBase));
+        }
+
+        const tBase = displayEnvData[0].t;
+        const tdBase = displayEnvData[0].td;
         let cloudBaseAlt = zBase + Math.max(0, (tBase - tdBase) * 125);
         let cloudZone = null;
         let parcelPath = [];
         let ceilingZ = zBase;
 
         let pT = tBase + appConfig.parcelOffset;
-        let maxZ = envData[envData.length - 1].z;
-        parcelPath.push({ z: zBase, t: pT, hpa: envData[0].hpa });
+        let maxZ = displayEnvData[displayEnvData.length - 1].z;
+        parcelPath.push({ z: zBase, t: pT, hpa: displayEnvData[0].hpa });
 
         for (let currZ = zBase + 20; currZ <= maxZ; currZ += 20) {
             let isCloud = currZ >= cloudBaseAlt;
@@ -440,8 +471,8 @@
         const skew = appConfig.skewFactor;
         const applySkew = (t: number, hpa: number) => skew === 0 ? t : t + (pBottom - hpa) * skew;
 
-        const envPoints = envData.map((d: any) => ({ x: applySkew(d.t, d.hpa), y: d.z }));
-        const dewPoints = envData.map((d: any) => ({ x: applySkew(d.td, d.hpa), y: d.z }));
+        const envPoints = displayEnvData.map((d: any) => ({ x: applySkew(d.t, d.hpa), y: d.z }));
+        const dewPoints = displayEnvData.map((d: any) => ({ x: applySkew(d.td, d.hpa), y: d.z }));
         const parcelChartPoints = parcelPath.map(p => ({ x: applySkew(p.t, p.hpa), y: p.z }));
 
         const canvas = document.getElementById('sondageChart') as HTMLCanvasElement;
@@ -503,6 +534,19 @@
                     });
                     ctx.restore();
 
+                    // TRACÉ DU SOL
+                    const ySol = y.getPixelForValue(zBase);
+                    if (ySol >= chartArea.top && ySol <= chartArea.bottom) {
+                        ctx.save();
+                        ctx.fillStyle = 'rgba(46, 204, 113, 0.2)'; // Vert très léger pour le sol
+                        ctx.fillRect(chartArea.left, ySol, chartArea.right - chartArea.left, chartArea.bottom - ySol);
+                        ctx.strokeStyle = '#27ae60'; ctx.lineWidth = 2;
+                        ctx.beginPath(); ctx.moveTo(chartArea.left, ySol); ctx.lineTo(chartArea.right, ySol); ctx.stroke();
+                        ctx.fillStyle = '#27ae60'; ctx.font = 'bold 11px sans-serif';
+                        ctx.fillText('Sol', chartArea.left + 5, ySol + 12);
+                        ctx.restore();
+                    }
+
                     if (ceilingZ > zBase + 50) {
                         let plafondAlt = Math.min(ceilingZ, cloudBaseAlt);
                         const yPlafond = y.getPixelForValue(plafondAlt);
@@ -530,10 +574,10 @@
                     const { ctx, chartArea, scales: { y } } = chart;
                     if (!chartArea) return;
                     ctx.save(); ctx.textAlign = 'right'; ctx.textBaseline = 'middle'; ctx.font = 'bold 11px sans-serif';
-                    for (let i = 0; i < envData.length - 1; i++) {
-                        const dz = envData[i+1].z - envData[i].z;
+                    for (let i = 0; i < displayEnvData.length - 1; i++) {
+                        const dz = displayEnvData[i+1].z - displayEnvData[i].z;
                         if (dz > 0) {
-                            const lapseRate = ((envData[i].t - envData[i+1].t) / dz) * 100;
+                            const lapseRate = ((displayEnvData[i].t - displayEnvData[i+1].t) / dz) * 100;
                             let color = '#000';
                             if (lapseRate >= appConfig.lapse5) color = '#9b59b6';
                             else if (lapseRate >= appConfig.lapse4) color = '#e74c3c';
@@ -541,7 +585,7 @@
                             else if (lapseRate >= appConfig.lapse2) color = '#f1c40f';
                             else if (lapseRate >= appConfig.lapse1) color = '#2ecc71';
 
-                            const pyMid = (y.getPixelForValue(envData[i].z) + y.getPixelForValue(envData[i+1].z)) / 2;
+                            const pyMid = (y.getPixelForValue(displayEnvData[i].z) + y.getPixelForValue(displayEnvData[i+1].z)) / 2;
                             const text = lapseRate.toFixed(2);
                             ctx.lineWidth = 3; ctx.strokeStyle = 'rgba(255,255,255,0.8)';
                             ctx.strokeText(text, chartArea.right - 5, pyMid);
@@ -600,6 +644,10 @@
     
     /* TABLE GRID */
     .grid-container { overflow-x: auto; background: white; border-radius: 6px; width: 100%; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
+    .grid-container::-webkit-scrollbar { height: 8px; }
+    .grid-container::-webkit-scrollbar-track { background: #f1f1f1; border-radius: 4px; }
+    .grid-container::-webkit-scrollbar-thumb { background: #c1c1c1; border-radius: 4px; }
+    
     .wind-grid { font-variant-numeric: tabular-nums; border-collapse: collapse; text-align: center; table-layout: fixed; width: max-content; margin: 0; }
     .wind-grid th, .wind-grid td { padding: 2px; width: 40px; min-width: 40px; height: 40px; border: 1px solid rgba(0,0,0,0.05); transition: background-color 0.2s;}
     .wind-grid thead th { background-color: #f8f9fa; font-weight: 600; font-size: 12px; position: sticky; top: 0; }
@@ -607,7 +655,7 @@
     
     .hour-header { cursor: pointer; color: #2980b9; transition: all 0.2s; }
     .hour-header:hover { background-color: #e8f4f8; }
-    .hour-header.active { background-color: #2980b9; color: white; border: 1px solid #333 !important; }
+    .hour-header.active { background-color: #2980b9; color: white; border: 1px solid #333 !important; border-bottom: none !important; }
     td.active-col { border-left: 1px solid #333 !important; border-right: 1px solid #333 !important; background-color: rgba(41, 128, 185, 0.05); }
     
     .cell-content { display: flex; flex-direction: column; align-items: center; justify-content: center; font-size: 11px; font-weight: bold; text-shadow: 0px 0px 2px rgba(255,255,255,0.8); }
