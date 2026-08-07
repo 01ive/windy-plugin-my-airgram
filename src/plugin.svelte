@@ -145,7 +145,7 @@
     let appConfig = {
         windLight: 15, windMod: 30, windStrong: 50, windGale: 100,
         lapse1: 0.6, lapse2: 0.8, lapse3: 1.0, lapse4: 1.2, lapse5: 1.4,
-        skewFactor: 0.08, parcelOffset: 0.0 
+        skewFactor: 0.08, parcelOffset: 2.0 
     };
     
     let tempConfig = { ...appConfig };
