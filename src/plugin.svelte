@@ -72,7 +72,6 @@
                             </tr>
                         </thead>
                         <tbody>
-                            <!-- LIGNE DES PLAFONDS THERMIQUES -->
                             <tr class="ceiling-row">
                                 <th class="y-axis" style="color: #e74c3c;">Plafond (m)</th>
                                 {#each times as t, j}
@@ -91,7 +90,6 @@
                                 {/each}
                             </tr>
 
-                            <!-- GRILLE DES VENTS -->
                             {#each levels as level, i}
                                 <tr style="{level.isSurface ? 'border-bottom: 2px solid #2980b9;' : ''}">
                                     <th class="y-axis" style="{level.isSurface ? 'color: #2980b9; font-weight: bold;' : ''}">
@@ -154,11 +152,24 @@
     let showConfig = false;
     let currentStep = 3;
 
+    // ALIGNEMENT SUR LES PALIERS DE MAMETEO
+    const FIXED_LEVELS = [
+        { alt: "11800m", hpa: 200, z: 11800 },
+        { alt: "10500m", hpa: 250, z: 10500 },
+        { alt: "9000m",  hpa: 300, z: 9000 },
+        { alt: "7000m",  hpa: 400, z: 7000 },
+        { alt: "5500m",  hpa: 500, z: 5500 },
+        { alt: "4000m",  hpa: 600, z: 4000 },
+        { alt: "3000m",  hpa: 700, z: 3000 },
+        { alt: "2000m",  hpa: 800, z: 2000 },
+        { alt: "1500m",  hpa: 850, z: 1500 },
+        { alt: "1000m",  hpa: 900, z: 1000 },
+        { alt: "500m",   hpa: 950, z: 500 }
+    ];
+
     const toggleStep = () => {
         currentStep = currentStep === 3 ? 1 : 3;
-        if (lat !== null && lon !== null) {
-            fetchWindGrid(lat, lon);
-        }
+        if (lat !== null && lon !== null) fetchWindGrid(lat, lon);
     };
 
     const openConfig = () => { tempConfig = { ...appConfig }; showConfig = true; };
@@ -183,18 +194,7 @@
     let grid: Array<Array<{ speedKmh: number, dir: number, colorClass: string } | null>> = [];
     
     let hourlyProfiles: Array<any> = []; 
-    // On étend l'interface pour stocker TOUTES les variables liées au thermique de l'heure
-    let thermalCeilings: Array<{ 
-        alt: number, 
-        isCloud: boolean, 
-        hasThermal: boolean, 
-        parcelPath: Array<any>,
-        cloudZone: Array<number> | null,
-        cloudBaseAlt: number,
-        ceilingZ: number,
-        getEnvAtZForHour: Function
-    }> = [];
-    
+    let thermalCeilings: Array<any> = [];
     let selectedHourIndex: number | null = null;
     let sondageChartInstance: any = null;
 
@@ -213,18 +213,12 @@
         return (b * alpha) / (a - alpha);
     };
 
-    // --- MOTEUR THERMODYNAMIQUE CENTRALISÉ ---
-    // Cette fonction calcule tout une seule fois par heure (pour la table ET le graphique)
     const calculateThermals = () => {
         thermalCeilings = [];
         for (let j = 0; j < times.length; j++) {
             const envData = hourlyProfiles[j];
             if (!envData || envData.length === 0) {
-                thermalCeilings.push({ 
-                    alt: 0, isCloud: false, hasThermal: false, 
-                    parcelPath: [], cloudZone: null, cloudBaseAlt: 0, ceilingZ: 0, 
-                    getEnvAtZForHour: () => null 
-                });
+                thermalCeilings.push({ alt: 0, isCloud: false, hasThermal: false, parcelPath: [], cloudZone: null, getEnvAtZForHour: () => null });
                 continue;
             }
 
@@ -234,7 +228,6 @@
                 let l1 = [...envData].reverse().find(d => d.z <= z);
                 let l2 = envData.find(d => d.z >= z);
                 
-                // Extrapolation vers le bas si on fouille sous le sol du modèle (pour le fond du graphique)
                 if (!l1 && l2) {
                     const dz = l2.z - z;
                     return { z: z, hpa: l2.hpa + (dz / 8.5), t: l2.t + dz * 0.0098, td: l2.td + dz * 0.002 };
@@ -264,7 +257,6 @@
             
             const maxZ = envData[envData.length - 1].z;
 
-            // Ascension de la particule
             for (let currZ = zBase + 20; currZ <= maxZ; currZ += 20) {
                 let isCloud = currZ >= cloudBaseAlt;
                 let envAtZ = getEnvAtZForHour(currZ);
@@ -283,8 +275,6 @@
                 }
                 
                 pT += lapse * 20;
-                
-                // Entraînement 1%
                 const entrainment = 0.01; 
                 pT = pT * (1 - entrainment) + envAtZ.t * entrainment;
 
@@ -304,16 +294,11 @@
                 isCloudCapped = true;
             }
 
-            // On stocke TOUT le résultat pour l'heure en cours
             thermalCeilings.push({ 
                 alt: Math.round(exactAlt), 
                 isCloud: isCloudCapped, 
                 hasThermal: ceilingZ > zBase + 50,
-                parcelPath,
-                cloudZone,
-                cloudBaseAlt,
-                ceilingZ,
-                getEnvAtZForHour
+                parcelPath, cloudZone, cloudBaseAlt, ceilingZ, getEnvAtZForHour
             });
         }
     };
@@ -328,10 +313,9 @@
             const currentTime = store.get('timestamp'); 
             
             const forecast = await getMeteogramForecastData(model, { lat: latitude, lon: longitude, step: currentStep });
-            
             if (!forecast || !forecast.data) { status = "Données indisponibles."; return; }
 
-            groundElevation = Math.round(forecast.data.header?.modelElevation || forecast.data.data?.header?.modelElevation || 0);
+            groundElevation = forecast.data.header?.elevation || 0;
 
             const rawData = forecast.data.data || forecast.data;
             const timeArray = rawData.ts || rawData.hours || rawData.time;
@@ -353,32 +337,30 @@
                 times.push({ label: `${d.getHours()}h`, index: startIndex + i });
             }
 
+            // CRÉATION DE LA GRILLE D'ALTITUDES FIXES COMME DANS MAMETEO
             const tempLevels = [];
-            for (const key of Object.keys(rawData)) {
-                if (key.startsWith('wind_u-')) {
-                    const level = key.split('-')[1]; 
-                    let alt = 0; let displayLevel = level.endsWith('h') ? `${level}Pa` : level;
-                    let isSurface = false; let hpa = 1013;
-                    
-                    const gh = rawData[`gh-${level}`];
-                    if (gh && gh[startIndex] !== undefined) {
-                        alt = Math.round(gh[startIndex]);
-                        if (level.endsWith('h')) hpa = parseInt(level);
-                    } else {
-                        if (level === 'surface' || level.includes('10m') || level.includes('2m')) {
-                            alt = groundElevation;
-                            displayLevel = `${alt}m (Sol)`; isSurface = true;
-                            hpa = Math.round(1013.25 * Math.pow(1 - 2.25577e-5 * alt, 5.25588));
-                        } else if (level.endsWith('h')) {
-                            hpa = parseInt(level);
-                            if (!isNaN(hpa)) alt = Math.round(44330 * (1 - Math.pow(hpa / 1013.25, 0.1903)));
-                            displayLevel = `${alt}m`;
-                        }
+            FIXED_LEVELS.forEach(fl => {
+                if (fl.z > groundElevation) {
+                    if (rawData[`wind_u-${fl.hpa}h`]) {
+                        tempLevels.push({
+                            key: `${fl.hpa}h`,
+                            alt: fl.z,
+                            label: fl.alt,
+                            isSurface: false,
+                            hpa: fl.hpa
+                        });
                     }
-                    if (!isSurface && displayLevel !== 'Sol') displayLevel = `${alt}m`;
-                    tempLevels.push({ key: level, alt, label: displayLevel, isSurface, hpa });
                 }
-            }
+            });
+            
+            // LA LIGNE DU SOL EST EXACTEMENT GROUND ELEVATION
+            tempLevels.push({
+                key: 'surface',
+                alt: groundElevation,
+                label: `${groundElevation}m (Sol)`,
+                isSurface: true,
+                hpa: Math.round(1013.25 * Math.pow(1 - 2.25577e-5 * groundElevation, 5.25588))
+            });
 
             tempLevels.sort((a, b) => b.alt - a.alt); 
             levels = tempLevels.filter(l => l.alt <= 10000);
@@ -387,12 +369,27 @@
                 const dataIndex = times[j].index;
                 let envData = []; 
                 
+                // Remplissage de la grille des vents (incluant interpolation pour le sol)
                 for (let i = 0; i < levels.length; i++) {
                     const l = levels[i];
                     if (!grid[i]) grid[i] = [];
                     
-                    const u = rawData[`wind_u-${l.key}`]?.[dataIndex];
-                    const v = rawData[`wind_v-${l.key}`]?.[dataIndex];
+                    let u, v;
+                    if (l.isSurface) {
+                        u = rawData[`wind_u-surface`]?.[dataIndex] || rawData[`wind_u-10m`]?.[dataIndex];
+                        v = rawData[`wind_v-surface`]?.[dataIndex] || rawData[`wind_v-10m`]?.[dataIndex];
+                        if (u === undefined) {
+                            const levelAbove = levels[i-1];
+                            if (levelAbove) {
+                                u = rawData[`wind_u-${levelAbove.key}`]?.[dataIndex];
+                                v = rawData[`wind_v-${levelAbove.key}`]?.[dataIndex];
+                            }
+                        }
+                    } else {
+                        u = rawData[`wind_u-${l.key}`]?.[dataIndex];
+                        v = rawData[`wind_v-${l.key}`]?.[dataIndex];
+                    }
+
                     if (u !== undefined && v !== undefined) {
                         const obj = wind2obj([u, v]);
                         const speedKmh = Math.round(obj.wind * 3.6);
@@ -400,30 +397,35 @@
                     } else { grid[i][j] = null; }
                 }
 
+                // Génération du profil vertical Thermodynamique depuis l'air libre jusqu'au sol
                 for (let i = levels.length - 1; i >= 0; i--) {
                     const l = levels[i];
-                    if (l.isSurface) continue; 
-
-                    const tK = rawData[`temp-${l.key}`]?.[dataIndex];
-                    let rh = rawData[`rh-${l.key}`]?.[dataIndex];
                     
-                    if (tK !== undefined) {
-                        const tC = tK - 273.15;
-                        const tdC = rh !== undefined ? getDewPoint(tC, rh) : tC - 5; 
-                        envData.push({ z: l.alt, hpa: l.hpa, t: tC, td: tdC });
-                    }
-                }
-
-                if (envData.length > 0) {
-                    const lowest = envData[0];
-                    if (groundElevation < lowest.z) {
-                        const dz = lowest.z - groundElevation;
-                        envData.unshift({
-                            z: groundElevation,
-                            hpa: lowest.hpa + (dz / 8.5),
-                            t: lowest.t + dz * 0.0098,
-                            td: lowest.td + dz * 0.002
-                        });
+                    if (l.isSurface) {
+                        const firstFreeAir = levels[i-1]; 
+                        if (firstFreeAir) {
+                            const tK = rawData[`temp-${firstFreeAir.key}`]?.[dataIndex];
+                            const rh = rawData[`rh-${firstFreeAir.key}`]?.[dataIndex];
+                            if (tK !== undefined) {
+                                const tC = tK - 273.15;
+                                const tdC = rh !== undefined ? getDewPoint(tC, rh) : tC - 5;
+                                const dz = firstFreeAir.alt - l.alt;
+                                envData.push({
+                                    z: l.alt,
+                                    hpa: l.hpa,
+                                    t: tC + dz * 0.0098, // Extrapolation sèche stricte
+                                    td: tdC + dz * 0.002
+                                });
+                            }
+                        }
+                    } else {
+                        const tK = rawData[`temp-${l.key}`]?.[dataIndex];
+                        let rh = rawData[`rh-${l.key}`]?.[dataIndex];
+                        if (tK !== undefined) {
+                            const tC = tK - 273.15;
+                            const tdC = rh !== undefined ? getDewPoint(tC, rh) : tC - 5; 
+                            envData.push({ z: l.alt, hpa: l.hpa, t: tC, td: tdC });
+                        }
                     }
                 }
                 hourlyProfiles.push(envData);
@@ -439,7 +441,13 @@
 
         } catch (error) {
             console.error("Erreur d'extraction :", error);
-            status = "Erreur lors du sondage.";
+            if (currentStep === 1) {
+                console.warn("Repli sur 3h.");
+                currentStep = 3;
+                fetchWindGrid(latitude, longitude);
+            } else {
+                status = "Erreur lors du sondage.";
+            }
         }
     };
 
@@ -449,26 +457,31 @@
         drawSondage(index);
     };
 
-    // --- LE GRAPHIQUE SE CONTENTE DE DESSINER LES DONNÉES PRÉ-CALCULÉES ---
     const drawSondage = (hourIndex: number) => {
         const ChartLib = (window as any).Chart;
         if (!ChartLib) { setTimeout(() => drawSondage(hourIndex), 200); return; }
 
         const envData = hourlyProfiles[hourIndex];
-        const thermal = thermalCeilings[hourIndex]; // On récupère la donnée de la table !
+        const thermal = thermalCeilings[hourIndex]; 
         if (!envData || envData.length === 0 || !thermal) return;
 
         const zBase = groundElevation;
-        const getEnvAtZ = thermal.getEnvAtZForHour; // On utilise exactement la même interpolation
+        const getEnvAtZ = thermal.getEnvAtZForHour; 
 
-        const zBottom = Math.floor(zBase / 500) * 500;
+        // L'AXE Y DÉMARRE ICI EXACTEMENT SUR L'ALTITUDE GÉOGRAPHIQUE DU SOL
+        const zBottom = zBase; 
         const pBottom = getEnvAtZ(zBottom).hpa;
         const skew = appConfig.skewFactor;
         const applySkew = (t: number, hpa: number) => skew === 0 ? t : t + (pBottom - hpa) * skew;
 
-        // Le chemin de la particule est extrait de la structure `thermal` sans aucun recalcul
-        const envPoints = envData.map((d: any) => ({ x: applySkew(d.t, d.hpa), y: d.z }));
-        const dewPoints = envData.map((d: any) => ({ x: applySkew(d.td, d.hpa), y: d.z }));
+        // Protection : On ne trace rien sous l'altitude zBase
+        let displayEnvData = [...envData].filter((d: any) => d.z >= zBase);
+        if (displayEnvData.length === 0 || displayEnvData[0].z > zBase) {
+            displayEnvData.unshift(getEnvAtZ(zBase));
+        }
+
+        const envPoints = displayEnvData.map((d: any) => ({ x: applySkew(d.t, d.hpa), y: d.z }));
+        const dewPoints = displayEnvData.map((d: any) => ({ x: applySkew(d.td, d.hpa), y: d.z }));
         const parcelChartPoints = thermal.parcelPath.map((p: any) => ({ x: applySkew(p.t, p.hpa), y: p.z }));
 
         const ceilingZ = thermal.ceilingZ;
@@ -513,7 +526,20 @@
                 indexAxis: 'y', responsive: true, maintainAspectRatio: false,
                 scales: {
                     x: { type: 'linear', position: 'bottom', grid: { display: false } },
-                    y: { type: 'linear', position: 'left', min: zBottom, ticks: { stepSize: 500, callback: (v:any) => v + "m" } }
+                    y: { 
+                        type: 'linear', 
+                        position: 'left', 
+                        min: zBottom, // L'axe Y démarre exactement au sol !
+                        ticks: { 
+                            stepSize: 500, 
+                            callback: function(value) {
+                                // Affichage propre des étiquettes Y : on montre le sol, et les paliers de 500m
+                                if (value === zBottom) return Math.round(value) + "m";
+                                if (value % 500 === 0) return value + "m";
+                                return null;
+                            } 
+                        } 
+                    }
                 }
             },
             plugins: [{
@@ -523,28 +549,34 @@
                     if (!chartArea) return;
 
                     ctx.save(); ctx.strokeStyle = '#eee'; ctx.lineWidth = 1;
+                    
+                    // La boucle gère proprement l'intersection des obliques avec le bas non-rond de l'axe
                     x.ticks.forEach((tick: any) => {
                         ctx.beginPath();
-                        for (let z = y.min; z <= y.max; z += 200) {
+                        let isFirst = true;
+                        const startZ = Math.floor(y.min / 200) * 200;
+                        for (let z = startZ; z <= y.max; z += 200) {
+                            if (z < y.min) continue;
                             const px = x.getPixelForValue(tick.value + (pBottom - getEnvAtZ(z).hpa) * skew);
                             const py = y.getPixelForValue(z);
-                            z === y.min ? ctx.moveTo(px, py) : ctx.lineTo(px, py);
+                            
+                            if (isFirst) {
+                                if (z > y.min) {
+                                    const pxMin = x.getPixelForValue(tick.value + (pBottom - getEnvAtZ(y.min).hpa) * skew);
+                                    const pyMin = y.getPixelForValue(y.min);
+                                    ctx.moveTo(pxMin, pyMin);
+                                    ctx.lineTo(px, py);
+                                } else {
+                                    ctx.moveTo(px, py);
+                                }
+                                isFirst = false;
+                            } else {
+                                ctx.lineTo(px, py);
+                            }
                         }
                         ctx.stroke();
                     });
                     ctx.restore();
-
-                    const ySol = y.getPixelForValue(zBase);
-                    if (ySol >= chartArea.top && ySol <= chartArea.bottom) {
-                        ctx.save();
-                        ctx.fillStyle = 'rgba(46, 204, 113, 0.15)'; 
-                        ctx.fillRect(chartArea.left, ySol, chartArea.right - chartArea.left, chartArea.bottom - ySol);
-                        ctx.strokeStyle = '#27ae60'; ctx.lineWidth = 2;
-                        ctx.beginPath(); ctx.moveTo(chartArea.left, ySol); ctx.lineTo(chartArea.right, ySol); ctx.stroke();
-                        ctx.fillStyle = '#27ae60'; ctx.font = 'bold 11px sans-serif';
-                        ctx.fillText('Sol', chartArea.left + 5, ySol + 12);
-                        ctx.restore();
-                    }
 
                     if (ceilingZ > zBase + 50) {
                         let plafondAlt = Math.min(ceilingZ, cloudBaseAlt);
@@ -573,10 +605,10 @@
                     const { ctx, chartArea, scales: { y } } = chart;
                     if (!chartArea) return;
                     ctx.save(); ctx.textAlign = 'right'; ctx.textBaseline = 'middle'; ctx.font = 'bold 11px sans-serif';
-                    for (let i = 0; i < envData.length - 1; i++) {
-                        const dz = envData[i+1].z - envData[i].z;
+                    for (let i = 0; i < displayEnvData.length - 1; i++) {
+                        const dz = displayEnvData[i+1].z - displayEnvData[i].z;
                         if (dz > 0) {
-                            const lapseRate = ((envData[i].t - envData[i+1].t) / dz) * 100;
+                            const lapseRate = ((displayEnvData[i].t - displayEnvData[i+1].t) / dz) * 100;
                             let color = '#000';
                             if (lapseRate >= appConfig.lapse5) color = '#9b59b6';
                             else if (lapseRate >= appConfig.lapse4) color = '#e74c3c';
@@ -584,7 +616,7 @@
                             else if (lapseRate >= appConfig.lapse2) color = '#f1c40f';
                             else if (lapseRate >= appConfig.lapse1) color = '#2ecc71';
 
-                            const pyMid = (y.getPixelForValue(envData[i].z) + y.getPixelForValue(envData[i+1].z)) / 2;
+                            const pyMid = (y.getPixelForValue(displayEnvData[i].z) + y.getPixelForValue(displayEnvData[i+1].z)) / 2;
                             const text = lapseRate.toFixed(2);
                             ctx.lineWidth = 3; ctx.strokeStyle = 'rgba(255,255,255,0.8)';
                             ctx.strokeText(text, chartArea.right - 5, pyMid);
@@ -615,18 +647,18 @@
             document.head.appendChild(script);
         }
         
-        store.on('pickerLocation', onPickerLocation);
-        store.on('timestamp', onSettingsChange); 
-        store.on('product', onSettingsChange);   
+        try { store.on('pickerLocation', onPickerLocation); } catch(e) {}
+        try { store.on('timestamp', onSettingsChange); } catch(e) {}
+        try { store.on('product', onSettingsChange); } catch(e) {}
         
         const currentLoc = store.get('pickerLocation');
         if (currentLoc) onPickerLocation(currentLoc);
     });
 
     onDestroy(() => { 
-        store.off('pickerLocation', onPickerLocation); 
-        store.off('timestamp', onSettingsChange);
-        store.off('product', onSettingsChange);
+        try { store.off('pickerLocation', onPickerLocation); } catch(e) {}
+        try { store.off('timestamp', onSettingsChange); } catch(e) {}
+        try { store.off('product', onSettingsChange); } catch(e) {}
     });
 </script>
 
@@ -675,7 +707,7 @@
     .wind-grid { font-variant-numeric: tabular-nums; border-collapse: collapse; text-align: center; table-layout: fixed; width: max-content; margin: 0; }
     .wind-grid th, .wind-grid td { padding: 2px; width: 40px; min-width: 40px; height: 40px; border: 1px solid rgba(0,0,0,0.05); transition: background-color 0.2s;}
     .wind-grid thead th { background-color: #f8f9fa; font-weight: 600; font-size: 12px; position: sticky; top: 0; }
-    .y-axis { text-align: right; padding-right: 10px; white-space: nowrap; background-color: #f8f9fa; position: sticky; left: 0; z-index: 2; font-size: 12px; }
+    .y-axis { color: black; text-align: right; padding-right: 10px; white-space: nowrap; background-color: #f8f9fa; position: sticky; left: 0; z-index: 2; font-size: 12px; }
     
     .hour-header { cursor: pointer; color: #2980b9; transition: all 0.2s; }
     .hour-header:hover { background-color: #e8f4f8; }
