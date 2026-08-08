@@ -156,7 +156,7 @@
     let appConfig = {
         windLight: 15, windMod: 30, windStrong: 50, windGale: 100,
         lapse1: 0.6, lapse2: 0.8, lapse3: 1.0, lapse4: 1.2, lapse5: 1.4,
-        skewFactor: 0.08, parcelOffset: 2.0 
+        skewFactor: 0.08, parcelOffset: 0.0 
     };
     
     let tempConfig = { ...appConfig };
@@ -201,7 +201,6 @@
     
     let times: Array<{ label: string, index: number }> = [];
     let levels: Array<{ key: string, alt: number, label: string, isSurface: boolean, hpa: number }> = [];
-    // NOUVEAU: cloudCover ajouté à l'interface de la grille
     let grid: Array<Array<{ speedKmh: number, dir: number, colorClass: string, cloudCover: number } | null>> = [];
     
     let hourlyProfiles: Array<any> = []; 
@@ -273,8 +272,8 @@
             };
 
             const envAtGround = getEnvAtZForHour(zBase);
-            const tBase = envAtGround.t;
-            const tdBase = envAtGround.td;
+            const tBase = envData[0].surfaceTemp !== undefined ? envData[0].surfaceTemp : envAtGround.t;
+            const tdBase = envData[0].surfaceTd !== undefined ? envData[0].surfaceTd : envAtGround.td;
             
             let cloudBaseAlt = zBase + Math.max(0, (tBase - tdBase) * 125);
             let pT = tBase + appConfig.parcelOffset;
@@ -410,7 +409,6 @@
                 const dataIndex = times[j].index;
                 let envData = []; 
                 
-                // Remplissage de la grille des vents ET des nuages (Humidité relative)
                 for (let i = 0; i < levels.length; i++) {
                     const l = levels[i];
                     if (!grid[i]) grid[i] = [];
@@ -444,7 +442,6 @@
                         const obj = wind2obj([u, v]);
                         const speedKmh = Math.round(obj.wind * 3.6);
                         
-                        // Calcul d'opacité du nuage : Si Humidité >= 80%
                         let cloudCover = 0;
                         if (rhVal !== undefined && rhVal >= 80) {
                             cloudCover = (rhVal - 80) * 5;
@@ -453,6 +450,17 @@
 
                         grid[i][j] = { speedKmh, dir: Math.round(obj.dir), colorClass: getWindColorClass(speedKmh), cloudCover };
                     } else { grid[i][j] = null; }
+                }
+
+                // Extrait de la température de surface SANS compensation d'altitude
+                let surfaceTemp = undefined;
+                let surfaceTd = undefined;
+                const surfaceTk = rawData[`temp-surface`]?.[dataIndex] || rawData[`temp-2m`]?.[dataIndex];
+                const surfaceRh = rawData[`rh-surface`]?.[dataIndex] || rawData[`rh-2m`]?.[dataIndex];
+                
+                if (surfaceTk !== undefined) {
+                    surfaceTemp = surfaceTk - 273.15;
+                    surfaceTd = surfaceRh !== undefined ? getDewPoint(surfaceTemp, surfaceRh) : surfaceTemp - 5;
                 }
 
                 for (let i = levels.length - 1; i >= 0; i--) {
@@ -470,8 +478,10 @@
                                 envData.push({
                                     z: l.alt,
                                     hpa: l.hpa,
-                                    t: tC + dz * 0.0098, 
-                                    td: tdC + dz * 0.002
+                                    t: tC + dz * 0.0098, // ADIABATIQUE SÈCHE POUR L'ENVIRONNEMENT
+                                    td: tdC + dz * 0.002,
+                                    surfaceTemp: surfaceTemp, 
+                                    surfaceTd: surfaceTd
                                 });
                             }
                         }
@@ -493,9 +503,14 @@
                         envData.unshift({
                             z: groundElevation,
                             hpa: lowest.hpa + (dz / 8.5),
-                            t: lowest.t + dz * 0.0098,
-                            td: lowest.td + dz * 0.002
+                            t: lowest.t + dz * 0.0098, // ADIABATIQUE SÈCHE POUR L'ENVIRONNEMENT
+                            td: lowest.td + dz * 0.002,
+                            surfaceTemp: surfaceTemp, 
+                            surfaceTd: surfaceTd
                         });
+                    } else {
+                        envData[0].surfaceTemp = surfaceTemp;
+                        envData[0].surfaceTd = surfaceTd;
                     }
                 }
                 hourlyProfiles.push(envData);
@@ -695,17 +710,13 @@
         });
     };
 
-    // On crée une variable pour stocker le chrono d'attente
     let debounceTimer: any = null;
 
     const onSettingsChange = () => {
         if (lat !== null && lon !== null) {
-            // S'il y a déjà un chronomètre en cours (Windy a émis une double mise à jour), on l'annule
             if (debounceTimer) {
                 clearTimeout(debounceTimer);
             }
-            
-            // On lance un nouveau chronomètre de 250ms avant d'exécuter le téléchargement
             debounceTimer = setTimeout(() => {
                 fetchWindGrid(lat, lon);
             }, 250);
