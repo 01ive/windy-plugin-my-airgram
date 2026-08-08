@@ -115,6 +115,20 @@
                                     {/each}
                                 </tr>
                             {/each}
+                            
+                            <!-- LIGNE DES PRÉCIPITATIONS (MAMETEO STYLE) -->
+                            <tr>
+                                <th class="y-axis">💧 mm</th>
+                                {#each times as t, j}
+                                    <td class="{selectedHourIndex === j ? 'active-col' : ''}">
+                                        {#if precipitations[j] > 0}
+                                            <div style="color: #3498db; font-weight: bold; font-size: 12px;">
+                                                {precipitations[j]}
+                                            </div>
+                                        {/if}
+                                    </td>
+                                {/each}
+                            </tr>
                         </tbody>
                     </table>
                     <!-- LÉGENDE MAMETEO -->
@@ -146,7 +160,8 @@
 <script lang="ts">
     import bcast from "@windy/broadcast";
     import store from "@windy/store";
-    import { getMeteogramForecastData } from "@windy/fetch";
+    // IMPORT DE GETPOINTFORECASTDATA POUR LES PRÉCIPITATIONS
+    import { getMeteogramForecastData, getPointForecastData } from "@windy/fetch";
     import { wind2obj } from "@windy/utils";
     import { onDestroy, onMount, tick } from 'svelte';
 
@@ -198,10 +213,12 @@
     let status: string = "";
     let currentModel: string = "";
     let groundElevation: number = 0; 
+    let modElevation: number = 0;
     
     let times: Array<{ label: string, index: number }> = [];
     let levels: Array<{ key: string, alt: number, label: string, isSurface: boolean, hpa: number }> = [];
     let grid: Array<Array<{ speedKmh: number, dir: number, colorClass: string, cloudCover: number } | null>> = [];
+    let precipitations: Array<number> = []; // TABLEAU DES PRÉCIPITATIONS
     
     let hourlyProfiles: Array<any> = []; 
     let thermalCeilings: Array<any> = [];
@@ -336,15 +353,23 @@
 
     const fetchWindGrid = async (latitude: number, longitude: number) => {
         status = "Extraction des données...";
-        times = []; levels = []; grid = []; hourlyProfiles = []; thermalCeilings = [];
+        times = []; levels = []; grid = []; hourlyProfiles = []; thermalCeilings = []; precipitations = [];
         
         try {
             const model = store.get('product'); 
             currentModel = model;
             const currentTime = store.get('timestamp'); 
             
-            const forecast = await getMeteogramForecastData(model, { lat: latitude, lon: longitude, step: currentStep });
-            if (!forecast || !forecast.data) { status = "Données indisponibles."; return; }
+            // EXÉCUTION EN PARALLÈLE DES DEUX REQUÊTES POUR NE PAS RALENTIR L'AFFICHAGE
+            const [forecast, pointForecast] = await Promise.all([
+                getMeteogramForecastData(model, { lat: latitude, lon: longitude, step: currentStep }),
+                getPointForecastData(model, { lat: latitude, lon: longitude, step: currentStep })
+            ]);
+            
+            if (!forecast || !forecast.data || !pointForecast || !pointForecast.data) { 
+                status = "Données indisponibles."; 
+                return; 
+            }
 
             groundElevation = Math.round(
                 forecast.data.header?.elevation || 
@@ -355,6 +380,10 @@
 
             const rawData = forecast.data.data || forecast.data;
             const timeArray = rawData.ts || rawData.hours || rawData.time;
+
+            const rawPointData = pointForecast.data.data || pointForecast.data;
+            const pointTimeArray = rawPointData.ts || rawPointData.hours || rawPointData.time;
+            const mmArray = rawPointData.precipAmount || [];
             
             let currentIndex = 0;
             if (timeArray && timeArray.length > 0) {
@@ -376,7 +405,7 @@
             for(let i = startIndex; i <= endIndex; i++) {
                 if (i === currentIndex) activeLocalIndex = times.length;
                 const d = new Date(timeArray[i]);
-                times.push({ label: `${d.getHours()}h`, index: i });
+                times.push({ label: `${d.getHours()}h`, index: i, timestamp: timeArray[i] });
             }
 
             const tempLevels = [];
@@ -407,7 +436,18 @@
 
             for (let j = 0; j < times.length; j++) {
                 const dataIndex = times[j].index;
+                const targetTimestamp = times[j].timestamp;
                 let envData = []; 
+                
+                // GESTION SÉCURISÉE DES PRÉCIPITATIONS (Recherche de l'index temporel exact)
+                let mmVal = 0;
+                if (pointTimeArray && pointTimeArray.length > 0) {
+                    const pointDataIndex = pointTimeArray.findIndex((t: number) => t === targetTimestamp);
+                    if (pointDataIndex !== -1) {
+                        mmVal = mmArray[pointDataIndex] || 0;
+                    }
+                }
+                precipitations.push(mmVal > 0 ? parseFloat(Number(mmVal).toFixed(1)) : 0);
                 
                 for (let i = 0; i < levels.length; i++) {
                     const l = levels[i];
@@ -452,7 +492,6 @@
                     } else { grid[i][j] = null; }
                 }
 
-                // Extrait de la température de surface SANS compensation d'altitude
                 let surfaceTemp = undefined;
                 let surfaceTd = undefined;
                 const surfaceTk = rawData[`temp-surface`]?.[dataIndex] || rawData[`temp-2m`]?.[dataIndex];
@@ -478,7 +517,7 @@
                                 envData.push({
                                     z: l.alt,
                                     hpa: l.hpa,
-                                    t: tC + dz * 0.0098, // ADIABATIQUE SÈCHE POUR L'ENVIRONNEMENT
+                                    t: tC + dz * 0.0098, 
                                     td: tdC + dz * 0.002,
                                     surfaceTemp: surfaceTemp, 
                                     surfaceTd: surfaceTd
@@ -503,7 +542,7 @@
                         envData.unshift({
                             z: groundElevation,
                             hpa: lowest.hpa + (dz / 8.5),
-                            t: lowest.t + dz * 0.0098, // ADIABATIQUE SÈCHE POUR L'ENVIRONNEMENT
+                            t: lowest.t + dz * 0.0098, 
                             td: lowest.td + dz * 0.002,
                             surfaceTemp: surfaceTemp, 
                             surfaceTd: surfaceTd
