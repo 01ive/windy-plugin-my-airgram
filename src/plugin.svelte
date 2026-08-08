@@ -98,7 +98,6 @@
                                         {level.label}
                                     </th>
                                     {#each times as t, j}
-                                        <!-- BORDURE ROUGE AJOUTÉE ICI VIA LE STYLE DYNAMIQUE -->
                                         <td class="{selectedHourIndex === j ? 'active-col' : ''}"
                                             style="{thermalCeilings[j]?.hasThermal && thermalCeilings[j]?.topLevelIndex === i ? 'box-shadow: inset 0 -4px 0 #e74c3c;' : ''}">
                                             {#if grid[i][j]}
@@ -156,7 +155,6 @@
     let showConfig = false;
     let currentStep = 3;
 
-    // ALIGNEMENT SUR LES PALIERS DE MAMETEO
     const FIXED_LEVELS = [
         { alt: "11800m", hpa: 200, z: 11800 },
         { alt: "10500m", hpa: 250, z: 10500 },
@@ -198,20 +196,23 @@
     let grid: Array<Array<{ speedKmh: number, dir: number, colorClass: string } | null>> = [];
     
     let hourlyProfiles: Array<any> = []; 
-    let thermalCeilings: Array<{ 
-        alt: number, 
-        isCloud: boolean, 
-        hasThermal: boolean,
-        topLevelIndex: number,
-        parcelPath: Array<any>,
-        cloudZone: Array<number> | null,
-        cloudBaseAlt: number,
-        ceilingZ: number,
-        getEnvAtZForHour: Function
-    }> = [];
-    
+    let thermalCeilings: Array<any> = [];
     let selectedHourIndex: number | null = null;
     let sondageChartInstance: any = null;
+
+    // FONCTION DE CENTRAGE DU TABLEAU SUR L'HEURE ACTIVE
+    const centerTable = () => {
+        const container = document.querySelector('.grid-container') as HTMLElement;
+        const activeHeader = document.querySelector('.hour-header.active') as HTMLElement;
+        if (container && activeHeader) {
+            const scrollPos = activeHeader.offsetLeft - (container.clientWidth / 2) + (activeHeader.offsetWidth / 2);
+            if (container.scrollTo) {
+                container.scrollTo({ left: scrollPos, behavior: 'smooth' });
+            } else {
+                container.scrollLeft = scrollPos;
+            }
+        }
+    };
 
     const getWindColorClass = (speedKmh: number) => {
         if (speedKmh < appConfig.windLight) return 'wind-light';
@@ -313,9 +314,8 @@
                 isCloudCapped = true;
             }
 
-            // Identification de l'index visuel pour la bordure rouge dans le tableau
             let topIdx = levels.findIndex(l => l.alt <= exactAlt);
-            if (topIdx === -1) topIdx = levels.length - 1; // Repli sur le sol si l'altitude est très basse
+            if (topIdx === -1) topIdx = levels.length - 1;
 
             thermalCeilings.push({ 
                 alt: Math.round(exactAlt), 
@@ -339,26 +339,40 @@
             const forecast = await getMeteogramForecastData(model, { lat: latitude, lon: longitude, step: currentStep });
             if (!forecast || !forecast.data) { status = "Données indisponibles."; return; }
 
-            groundElevation = Math.round(forecast.data.header?.modelElevation || forecast.data.data?.header?.modelElevation || 0);
+            // On privilégie l'altitude réelle (DEM) pour le point de départ de l'émagramme, 
+            // avec un repli sur l'altitude du modèle si l'info manque.
+            groundElevation = Math.round(
+                forecast.data.header?.elevation || 
+                forecast.data.header?.modelElevation || 
+                forecast.data.data?.header?.modelElevation || 
+                0
+            );
 
             const rawData = forecast.data.data || forecast.data;
             const timeArray = rawData.ts || rawData.hours || rawData.time;
             
-            let startIndex = 0;
+            let currentIndex = 0;
             if (timeArray && timeArray.length > 0) {
                 let minDiff = Infinity;
                 timeArray.forEach((time: number, index: number) => {
                     const diff = Math.abs(time - currentTime);
-                    if (diff < minDiff) { minDiff = diff; startIndex = index; }
+                    if (diff < minDiff) { minDiff = diff; currentIndex = index; }
                 });
             }
 
-            const maxSteps = currentStep === 1 ? 24 : 40;
-            const stepsToShow = Math.min(maxSteps, timeArray.length - startIndex);
+            // GESTION DYNAMIQUE DE LA FENÊTRE DE TEMPS (-6h à +18h)
+            const stepsBack = currentStep === 1 ? 6 : 2;
+            const stepsForward = currentStep === 1 ? 18 : 6;
             
-            for(let i = 0; i < stepsToShow; i++) {
-                const d = new Date(timeArray[startIndex + i]);
-                times.push({ label: `${d.getHours()}h`, index: startIndex + i });
+            const startIndex = Math.max(0, currentIndex - stepsBack);
+            const endIndex = Math.min(timeArray.length - 1, currentIndex + stepsForward);
+            
+            let activeLocalIndex = 0;
+
+            for(let i = startIndex; i <= endIndex; i++) {
+                if (i === currentIndex) activeLocalIndex = times.length;
+                const d = new Date(timeArray[i]);
+                times.push({ label: `${d.getHours()}h`, index: i });
             }
 
             const tempLevels = [];
@@ -454,7 +468,9 @@
             if (levels.length > 0 && times.length > 0) {
                 status = "Profil chargé.";
                 calculateThermals();
-                selectHour(0);
+                // Sélection automatique de l'heure ciblée par Windy et auto-centrage
+                await selectHour(activeLocalIndex);
+                setTimeout(centerTable, 50); // Un léger délai pour assurer que le DOM est complètement redessiné
             } else {
                 status = "Aucune donnée trouvée.";
             }
@@ -566,7 +582,6 @@
                     if (!chartArea) return;
 
                     ctx.save(); ctx.strokeStyle = '#eee'; ctx.lineWidth = 1;
-                    
                     x.ticks.forEach((tick: any) => {
                         ctx.beginPath();
                         let isFirst = true;
@@ -684,7 +699,6 @@
     #config-btn { background: none; border: none; font-size: 20px; cursor: pointer; transition: transform 0.3s ease; }
     #config-btn:hover { transform: rotate(45deg); }
     
-    /* Bouton bascule 1h/3h */
     #toggle-step-btn {
         padding: 4px 8px;
         font-size: 13px;
@@ -698,7 +712,6 @@
     }
     #toggle-step-btn:hover { background-color: #e8f4f8; border-color: #2980b9; }
 
-    /* MODALE DE CONFIG */
     #config-modal { position: absolute; top: 50px; left: 15px; background: white; padding: 15px; border-radius: 8px; box-shadow: 0 4px 20px rgba(0,0,0,0.2); z-index: 1000; width: 280px; border: 1px solid #ddd; font-size: 13px; }
     #config-modal h3 { margin: 0 0 15px 0; font-size: 15px; color: #2c3e50; border-bottom: 1px solid #eee; padding-bottom: 5px; }
     .config-section { margin-bottom: 15px; }
@@ -714,7 +727,7 @@
     .box { margin-top: 10px; padding: 12px; background-color: rgba(0, 0, 0, 0.05); border: 1px solid rgba(0, 0, 0, 0.1); border-radius: 6px; font-size: 0.95em; line-height: 1.5; }
     .wind-box { background-color: rgba(41, 128, 185, 0.1); border-color: rgba(41, 128, 185, 0.2); padding: 10px; overflow: hidden; }
     
-    .grid-container { overflow-x: auto; background: white; border-radius: 6px; width: 100%; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
+    .grid-container { overflow-x: auto; background: white; border-radius: 6px; width: 100%; box-shadow: 0 2px 4px rgba(0,0,0,0.1); scroll-behavior: smooth; }
     .grid-container::-webkit-scrollbar { height: 8px; }
     .grid-container::-webkit-scrollbar-track { background: #f1f1f1; border-radius: 4px; }
     .grid-container::-webkit-scrollbar-thumb { background: #c1c1c1; border-radius: 4px; }
