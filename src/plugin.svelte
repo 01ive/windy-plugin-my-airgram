@@ -91,7 +91,7 @@
                                 {/each}
                             </tr>
 
-                            <!-- GRILLE DES VENTS -->
+                            <!-- GRILLE DES VENTS ET NUAGES -->
                             {#each levels as level, i}
                                 <tr style="{level.isSurface ? 'border-bottom: 2px solid #2980b9;' : ''}">
                                     <th class="y-axis" style="{level.isSurface ? 'color: #2980b9; font-weight: bold;' : ''}">
@@ -99,7 +99,10 @@
                                     </th>
                                     {#each times as t, j}
                                         <td class="{selectedHourIndex === j ? 'active-col' : ''}"
-                                            style="{thermalCeilings[j]?.hasThermal && thermalCeilings[j]?.topLevelIndex === i ? 'box-shadow: inset 0 -4px 0 #e74c3c;' : ''}">
+                                            style="
+                                                {thermalCeilings[j]?.hasThermal && thermalCeilings[j]?.topLevelIndex === i ? 'box-shadow: inset 0 -4px 0 #e74c3c;' : ''}
+                                                {grid[i][j] && grid[i][j].cloudCover > 0 ? `background-color: rgba(170, 180, 190, ${grid[i][j].cloudCover / 100});` : ''}
+                                            ">
                                             {#if grid[i][j]}
                                                 <div class="cell-content {grid[i][j].colorClass}">
                                                     <span class="arrow" style="transform: rotate({grid[i][j].dir}deg);">↓</span>
@@ -114,6 +117,11 @@
                             {/each}
                         </tbody>
                     </table>
+                    <!-- LÉGENDE MAMETEO -->
+                    <div class="legend-box">
+                        <div class="legend-item"><div class="legend-color" style="background: rgba(170, 180, 190, 0.7);"></div> Nuages</div>
+                        <div class="legend-item"><div class="legend-color" style="border-top: 4px solid #e74c3c; height: 4px; background: transparent;"></div> Plafond Thermique</div>
+                    </div>
                 </div>
 
                 <!-- GRAPHIQUE ÉMAGRAMME -->
@@ -193,14 +201,14 @@
     
     let times: Array<{ label: string, index: number }> = [];
     let levels: Array<{ key: string, alt: number, label: string, isSurface: boolean, hpa: number }> = [];
-    let grid: Array<Array<{ speedKmh: number, dir: number, colorClass: string } | null>> = [];
+    // NOUVEAU: cloudCover ajouté à l'interface de la grille
+    let grid: Array<Array<{ speedKmh: number, dir: number, colorClass: string, cloudCover: number } | null>> = [];
     
     let hourlyProfiles: Array<any> = []; 
     let thermalCeilings: Array<any> = [];
     let selectedHourIndex: number | null = null;
     let sondageChartInstance: any = null;
 
-    // FONCTION DE CENTRAGE DU TABLEAU SUR L'HEURE ACTIVE
     const centerTable = () => {
         const container = document.querySelector('.grid-container') as HTMLElement;
         const activeHeader = document.querySelector('.hour-header.active') as HTMLElement;
@@ -339,8 +347,6 @@
             const forecast = await getMeteogramForecastData(model, { lat: latitude, lon: longitude, step: currentStep });
             if (!forecast || !forecast.data) { status = "Données indisponibles."; return; }
 
-            // On privilégie l'altitude réelle (DEM) pour le point de départ de l'émagramme, 
-            // avec un repli sur l'altitude du modèle si l'info manque.
             groundElevation = Math.round(
                 forecast.data.header?.elevation || 
                 forecast.data.header?.modelElevation || 
@@ -360,7 +366,6 @@
                 });
             }
 
-            // GESTION DYNAMIQUE DE LA FENÊTRE DE TEMPS (-6h à +18h)
             const stepsBack = currentStep === 1 ? 6 : 2;
             const stepsForward = currentStep === 1 ? 18 : 6;
             
@@ -405,14 +410,17 @@
                 const dataIndex = times[j].index;
                 let envData = []; 
                 
+                // Remplissage de la grille des vents ET des nuages (Humidité relative)
                 for (let i = 0; i < levels.length; i++) {
                     const l = levels[i];
                     if (!grid[i]) grid[i] = [];
                     
-                    let u, v;
+                    let u, v, rhVal;
                     if (l.isSurface) {
                         u = rawData[`wind_u-surface`]?.[dataIndex] || rawData[`wind_u-10m`]?.[dataIndex];
                         v = rawData[`wind_v-surface`]?.[dataIndex] || rawData[`wind_v-10m`]?.[dataIndex];
+                        rhVal = rawData[`rh-surface`]?.[dataIndex] || rawData[`rh-2m`]?.[dataIndex];
+                        
                         if (u === undefined) {
                             const levelAbove = levels[i-1];
                             if (levelAbove) {
@@ -420,15 +428,30 @@
                                 v = rawData[`wind_v-${levelAbove.key}`]?.[dataIndex];
                             }
                         }
+                        if (rhVal === undefined) {
+                            const levelAbove = levels[i-1];
+                            if (levelAbove) {
+                                rhVal = rawData[`rh-${levelAbove.key}`]?.[dataIndex];
+                            }
+                        }
                     } else {
                         u = rawData[`wind_u-${l.key}`]?.[dataIndex];
                         v = rawData[`wind_v-${l.key}`]?.[dataIndex];
+                        rhVal = rawData[`rh-${l.key}`]?.[dataIndex];
                     }
 
                     if (u !== undefined && v !== undefined) {
                         const obj = wind2obj([u, v]);
                         const speedKmh = Math.round(obj.wind * 3.6);
-                        grid[i][j] = { speedKmh, dir: Math.round(obj.dir), colorClass: getWindColorClass(speedKmh) };
+                        
+                        // Calcul d'opacité du nuage : Si Humidité >= 80%
+                        let cloudCover = 0;
+                        if (rhVal !== undefined && rhVal >= 80) {
+                            cloudCover = (rhVal - 80) * 5;
+                            if (cloudCover > 100) cloudCover = 100;
+                        }
+
+                        grid[i][j] = { speedKmh, dir: Math.round(obj.dir), colorClass: getWindColorClass(speedKmh), cloudCover };
                     } else { grid[i][j] = null; }
                 }
 
@@ -462,15 +485,27 @@
                         }
                     }
                 }
+                
+                if (envData.length > 0) {
+                    const lowest = envData[0];
+                    if (groundElevation < lowest.z) {
+                        const dz = lowest.z - groundElevation;
+                        envData.unshift({
+                            z: groundElevation,
+                            hpa: lowest.hpa + (dz / 8.5),
+                            t: lowest.t + dz * 0.0098,
+                            td: lowest.td + dz * 0.002
+                        });
+                    }
+                }
                 hourlyProfiles.push(envData);
             }
 
             if (levels.length > 0 && times.length > 0) {
                 status = "Profil chargé.";
                 calculateThermals();
-                // Sélection automatique de l'heure ciblée par Windy et auto-centrage
                 await selectHour(activeLocalIndex);
-                setTimeout(centerTable, 50); // Un léger délai pour assurer que le DOM est complètement redessiné
+                setTimeout(centerTable, 50); 
             } else {
                 status = "Aucune donnée trouvée.";
             }
@@ -750,6 +785,11 @@
     .wind-strong{ color: #e67e22; }
     .wind-gale  { color: #e74c3c; }
     .wind-hurricane { color: #8e44ad; }
+
+    /* LÉGENDE MAMETEO */
+    .legend-box { font-size: 11px; display: flex; justify-content: center; gap: 15px; margin-top: 8px; color: #555; padding-bottom: 10px;}
+    .legend-item { display: flex; align-items: center; gap: 5px; }
+    .legend-color { width: 12px; height: 12px; border: 1px solid #ccc; }
 
     .chart-container { background: white; padding: 15px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
     #chart-title { text-align: center; margin-top: 0; font-size: 14px; color: #2c3e50; margin-bottom: 15px; }
