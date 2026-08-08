@@ -10,11 +10,12 @@
     </div>
     
     <div class="top-bar">
-        <span style="display: flex; align-items: center; gap: 10px;">
-            <button id="config-btn" title="Configuration" on:click={openConfig}>⚙️</button>
-            <button id="toggle-step-btn" on:click={toggleStep} title="Changer l'intervalle">{currentStep}h</button>
-            <div class="greeting">Hello <b>Olive</b> !</div>
-        </span>
+            {#if lat !== null && lon !== null}
+                    📍 {lat.toFixed(4)}, {lon.toFixed(4)}
+                    <small style="color: gray;">{currentModel.toUpperCase()}</small>
+                    <button id="toggle-step-btn" on:click={toggleStep} title="Changer l'intervalle">{currentStep}h</button>
+                    <button id="config-btn" title="Configuration" on:click={openConfig}>⚙️</button>
+            {/if}
     </div>
 
     <!-- MODALE DE CONFIGURATION -->
@@ -46,12 +47,6 @@
     {/if}
 
     {#if lat !== null && lon !== null}
-        <div class="box">
-            📍 <b>GPS :</b> {lat.toFixed(4)}, {lon.toFixed(4)}
-            <br>
-            <small style="color: gray;">Modèle : {currentModel.toUpperCase()} | Sol : {groundElevation}m</small>
-        </div>
-
         <div class="box wind-box">
             {#if status === "Profil chargé."}
                 
