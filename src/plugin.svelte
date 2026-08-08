@@ -695,9 +695,20 @@
         });
     };
 
+    // On crée une variable pour stocker le chrono d'attente
+    let debounceTimer: any = null;
+
     const onSettingsChange = () => {
         if (lat !== null && lon !== null) {
-            fetchWindGrid(lat, lon);
+            // S'il y a déjà un chronomètre en cours (Windy a émis une double mise à jour), on l'annule
+            if (debounceTimer) {
+                clearTimeout(debounceTimer);
+            }
+            
+            // On lance un nouveau chronomètre de 250ms avant d'exécuter le téléchargement
+            debounceTimer = setTimeout(() => {
+                fetchWindGrid(lat, lon);
+            }, 250);
         }
     };
 
