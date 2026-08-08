@@ -72,6 +72,7 @@
                             </tr>
                         </thead>
                         <tbody>
+                            <!-- LIGNE DES PLAFONDS THERMIQUES -->
                             <tr class="ceiling-row">
                                 <th class="y-axis" style="color: #e74c3c;">Plafond (m)</th>
                                 {#each times as t, j}
@@ -90,13 +91,16 @@
                                 {/each}
                             </tr>
 
+                            <!-- GRILLE DES VENTS -->
                             {#each levels as level, i}
                                 <tr style="{level.isSurface ? 'border-bottom: 2px solid #2980b9;' : ''}">
                                     <th class="y-axis" style="{level.isSurface ? 'color: #2980b9; font-weight: bold;' : ''}">
                                         {level.label}
                                     </th>
                                     {#each times as t, j}
-                                        <td class="{selectedHourIndex === j ? 'active-col' : ''}">
+                                        <!-- BORDURE ROUGE AJOUTÉE ICI VIA LE STYLE DYNAMIQUE -->
+                                        <td class="{selectedHourIndex === j ? 'active-col' : ''}"
+                                            style="{thermalCeilings[j]?.hasThermal && thermalCeilings[j]?.topLevelIndex === i ? 'box-shadow: inset 0 -4px 0 #e74c3c;' : ''}">
                                             {#if grid[i][j]}
                                                 <div class="cell-content {grid[i][j].colorClass}">
                                                     <span class="arrow" style="transform: rotate({grid[i][j].dir}deg);">↓</span>
@@ -194,7 +198,18 @@
     let grid: Array<Array<{ speedKmh: number, dir: number, colorClass: string } | null>> = [];
     
     let hourlyProfiles: Array<any> = []; 
-    let thermalCeilings: Array<any> = [];
+    let thermalCeilings: Array<{ 
+        alt: number, 
+        isCloud: boolean, 
+        hasThermal: boolean,
+        topLevelIndex: number,
+        parcelPath: Array<any>,
+        cloudZone: Array<number> | null,
+        cloudBaseAlt: number,
+        ceilingZ: number,
+        getEnvAtZForHour: Function
+    }> = [];
+    
     let selectedHourIndex: number | null = null;
     let sondageChartInstance: any = null;
 
@@ -218,7 +233,11 @@
         for (let j = 0; j < times.length; j++) {
             const envData = hourlyProfiles[j];
             if (!envData || envData.length === 0) {
-                thermalCeilings.push({ alt: 0, isCloud: false, hasThermal: false, parcelPath: [], cloudZone: null, getEnvAtZForHour: () => null });
+                thermalCeilings.push({ 
+                    alt: 0, isCloud: false, hasThermal: false, topLevelIndex: -1,
+                    parcelPath: [], cloudZone: null, cloudBaseAlt: 0, ceilingZ: 0, 
+                    getEnvAtZForHour: () => null 
+                });
                 continue;
             }
 
@@ -294,10 +313,15 @@
                 isCloudCapped = true;
             }
 
+            // Identification de l'index visuel pour la bordure rouge dans le tableau
+            let topIdx = levels.findIndex(l => l.alt <= exactAlt);
+            if (topIdx === -1) topIdx = levels.length - 1; // Repli sur le sol si l'altitude est très basse
+
             thermalCeilings.push({ 
                 alt: Math.round(exactAlt), 
                 isCloud: isCloudCapped, 
                 hasThermal: ceilingZ > zBase + 50,
+                topLevelIndex: topIdx,
                 parcelPath, cloudZone, cloudBaseAlt, ceilingZ, getEnvAtZForHour
             });
         }
@@ -315,7 +339,7 @@
             const forecast = await getMeteogramForecastData(model, { lat: latitude, lon: longitude, step: currentStep });
             if (!forecast || !forecast.data) { status = "Données indisponibles."; return; }
 
-            groundElevation = forecast.data.header?.elevation || 0;
+            groundElevation = Math.round(forecast.data.header?.modelElevation || forecast.data.data?.header?.modelElevation || 0);
 
             const rawData = forecast.data.data || forecast.data;
             const timeArray = rawData.ts || rawData.hours || rawData.time;
@@ -337,7 +361,6 @@
                 times.push({ label: `${d.getHours()}h`, index: startIndex + i });
             }
 
-            // CRÉATION DE LA GRILLE D'ALTITUDES FIXES COMME DANS MAMETEO
             const tempLevels = [];
             FIXED_LEVELS.forEach(fl => {
                 if (fl.z > groundElevation) {
@@ -353,7 +376,6 @@
                 }
             });
             
-            // LA LIGNE DU SOL EST EXACTEMENT GROUND ELEVATION
             tempLevels.push({
                 key: 'surface',
                 alt: groundElevation,
@@ -369,7 +391,6 @@
                 const dataIndex = times[j].index;
                 let envData = []; 
                 
-                // Remplissage de la grille des vents (incluant interpolation pour le sol)
                 for (let i = 0; i < levels.length; i++) {
                     const l = levels[i];
                     if (!grid[i]) grid[i] = [];
@@ -397,7 +418,6 @@
                     } else { grid[i][j] = null; }
                 }
 
-                // Génération du profil vertical Thermodynamique depuis l'air libre jusqu'au sol
                 for (let i = levels.length - 1; i >= 0; i--) {
                     const l = levels[i];
                     
@@ -413,7 +433,7 @@
                                 envData.push({
                                     z: l.alt,
                                     hpa: l.hpa,
-                                    t: tC + dz * 0.0098, // Extrapolation sèche stricte
+                                    t: tC + dz * 0.0098, 
                                     td: tdC + dz * 0.002
                                 });
                             }
@@ -468,13 +488,11 @@
         const zBase = groundElevation;
         const getEnvAtZ = thermal.getEnvAtZForHour; 
 
-        // L'AXE Y DÉMARRE ICI EXACTEMENT SUR L'ALTITUDE GÉOGRAPHIQUE DU SOL
         const zBottom = zBase; 
         const pBottom = getEnvAtZ(zBottom).hpa;
         const skew = appConfig.skewFactor;
         const applySkew = (t: number, hpa: number) => skew === 0 ? t : t + (pBottom - hpa) * skew;
 
-        // Protection : On ne trace rien sous l'altitude zBase
         let displayEnvData = [...envData].filter((d: any) => d.z >= zBase);
         if (displayEnvData.length === 0 || displayEnvData[0].z > zBase) {
             displayEnvData.unshift(getEnvAtZ(zBase));
@@ -529,11 +547,10 @@
                     y: { 
                         type: 'linear', 
                         position: 'left', 
-                        min: zBottom, // L'axe Y démarre exactement au sol !
+                        min: zBottom,
                         ticks: { 
                             stepSize: 500, 
                             callback: function(value) {
-                                // Affichage propre des étiquettes Y : on montre le sol, et les paliers de 500m
                                 if (value === zBottom) return Math.round(value) + "m";
                                 if (value % 500 === 0) return value + "m";
                                 return null;
@@ -550,7 +567,6 @@
 
                     ctx.save(); ctx.strokeStyle = '#eee'; ctx.lineWidth = 1;
                     
-                    // La boucle gère proprement l'intersection des obliques avec le bas non-rond de l'axe
                     x.ticks.forEach((tick: any) => {
                         ctx.beginPath();
                         let isFirst = true;
@@ -698,7 +714,6 @@
     .box { margin-top: 10px; padding: 12px; background-color: rgba(0, 0, 0, 0.05); border: 1px solid rgba(0, 0, 0, 0.1); border-radius: 6px; font-size: 0.95em; line-height: 1.5; }
     .wind-box { background-color: rgba(41, 128, 185, 0.1); border-color: rgba(41, 128, 185, 0.2); padding: 10px; overflow: hidden; }
     
-    /* TABLE GRID */
     .grid-container { overflow-x: auto; background: white; border-radius: 6px; width: 100%; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
     .grid-container::-webkit-scrollbar { height: 8px; }
     .grid-container::-webkit-scrollbar-track { background: #f1f1f1; border-radius: 4px; }
@@ -723,7 +738,6 @@
     .wind-gale  { color: #e74c3c; }
     .wind-hurricane { color: #8e44ad; }
 
-    /* GRAPHIQUE ÉMAGRAMME */
     .chart-container { background: white; padding: 15px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
     #chart-title { text-align: center; margin-top: 0; font-size: 14px; color: #2c3e50; margin-bottom: 15px; }
     .canvas-wrapper { position: relative; height: 400px; width: 100%; }
