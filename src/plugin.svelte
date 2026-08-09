@@ -147,7 +147,7 @@
         </div>
     {:else}
         <div class="box">
-            <i>Ouvrez le sélecteur météo (Picker) pour sonder la masse d'air.</i>
+            <i>Déplacez la carte ou ouvrez le sélecteur pour sonder la masse d'air.</i>
         </div>
     {/if}
 </section>
@@ -607,9 +607,36 @@
         }
     };
 
-    const onPickerLocation = (location: any) => {
-        if (location) { lat = location.lat; lon = location.lon; fetchWindGrid(lat, lon); }
-        else { lat = null; lon = null; times = []; levels = []; grid = []; hourlyProfiles = []; status = "Cliquez sur la carte."; }
+    // NOUVELLE FONCTION : Automatisation de la position pour PC (Picker) et Mobile (Croix)
+    const updateLocation = () => {
+        let newLat = null;
+        let newLon = null;
+        
+        const loc = store.get('pickerLocation');
+        if (loc) {
+            newLat = loc.lat;
+            newLon = loc.lon;
+        } else {
+            // Sur mobile, on utilise la croix centrale enregistrée en temps réel par Windy
+            const coords = store.get('mapCoords');
+            if (coords) {
+                newLat = coords.lat;
+                newLon = coords.lon;
+            }
+        }
+
+        if (newLat !== null && newLon !== null && (lat !== newLat || lon !== newLon)) {
+            lat = newLat;
+            lon = newLon;
+            
+            if (debounceTimer) {
+                clearTimeout(debounceTimer);
+            }
+            // Anti-rebond généreux de 400ms pour éviter de spammer le réseau pendant le déplacement mobile
+            debounceTimer = setTimeout(() => {
+                fetchWindGrid(lat, lon);
+            }, 400); 
+        }
     };
 
     onMount(() => {
@@ -619,16 +646,18 @@
             document.head.appendChild(script);
         }
         
-        try { store.on('pickerLocation', onPickerLocation); } catch(e) {}
+        // On écoute le picker ET la croix centrale
+        try { store.on('pickerLocation', updateLocation); } catch(e) {}
+        try { store.on('mapCoords', updateLocation); } catch(e) {}
         try { store.on('timestamp', onSettingsChange); } catch(e) {}
         try { store.on('product', onSettingsChange); } catch(e) {}
         
-        const currentLoc = store.get('pickerLocation');
-        if (currentLoc) onPickerLocation(currentLoc);
+        updateLocation();
     });
 
     onDestroy(() => { 
-        try { store.off('pickerLocation', onPickerLocation); } catch(e) {}
+        try { store.off('pickerLocation', updateLocation); } catch(e) {}
+        try { store.off('mapCoords', updateLocation); } catch(e) {}
         try { store.off('timestamp', onSettingsChange); } catch(e) {}
         try { store.off('product', onSettingsChange); } catch(e) {}
     });
