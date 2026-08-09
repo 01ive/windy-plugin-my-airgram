@@ -11,8 +11,18 @@
     
     <div class="top-bar">
             {#if lat !== null && lon !== null}
-                    📍 {lat.toFixed(4)}, {lon.toFixed(4)}
-                    <!-- DÉBUT DE LA MODIFICATION -->
+                    <!-- NOUVEAU SÉLECTEUR DE FAVORIS -->
+                    <select class="model-selector location-selector" on:change={onFavChange}>
+                        <option value="current">📍 {lat.toFixed(4)}, {lon.toFixed(4)}</option>
+                        {#if favs.length > 0}
+                            <optgroup label="Mes Favoris">
+                                {#each favs as fav, index}
+                                    <option value={index}>{fav.title || fav.name || 'Favori ' + (index+1)}</option>
+                                {/each}
+                            </optgroup>
+                        {/if}
+                    </select>
+
                     <select class="model-selector" value={currentModel} on:change={changeModel}>
                         <option value="ecmwf">ECMWF</option>
                         <option value="gfs">GFS</option>
@@ -22,7 +32,6 @@
                         <option value="aromeFrance">AROME</option>
                         <option value="czeAladin">ALADIN</option>
                     </select>
-                    <!-- FIN DE LA MODIFICATION -->
                     <button id="toggle-step-btn" on:click={toggleStep} title="Changer l'intervalle">{currentStep}h</button>
                     <button id="config-btn" title="Configuration" on:click={openConfig}>⚙️</button>
             {/if}
@@ -167,6 +176,7 @@
     import store from "@windy/store";
     import { getMeteogramForecastData, getPointForecastData } from "@windy/fetch";
     import { wind2obj } from "@windy/utils";
+    import favsModule from "@windy/userFavs"; // IMPORT API OFFICIELLE DES FAVORIS
     import { onDestroy, onMount, tick } from 'svelte';
 
     import config from './pluginConfig';
@@ -201,12 +211,10 @@
         if (lat !== null && lon !== null) fetchWindGrid(lat, lon);
     };
 
-    // DÉBUT DE LA MODIFICATION
     const changeModel = (event: any) => {
         store.set('product', event.target.value);
         if (lat !== null && lon !== null) fetchWindGrid(lat, lon);
     };
-    // FIN DE LA MODIFICATION
 
     const openConfig = () => { tempConfig = { ...appConfig }; showConfig = true; };
     const closeConfig = () => { showConfig = false; };
@@ -214,6 +222,15 @@
         appConfig = { ...tempConfig };
         showConfig = false;
         if (hourlyProfiles.length > 0) {
+            for (let i = 0; i < grid.length; i++) {
+                for (let j = 0; j < grid[i].length; j++) {
+                    if (grid[i][j]) {
+                        grid[i][j].colorClass = getWindColorClass(grid[i][j].speedKmh);
+                    }
+                }
+            }
+            grid = grid; 
+
             calculateThermals();
             if (selectedHourIndex !== null) drawSondage(selectedHourIndex);
         }
@@ -235,6 +252,33 @@
     let thermalCeilings: Array<any> = [];
     let selectedHourIndex: number | null = null;
     let sondageChartInstance: any = null;
+
+    // GESTION DES FAVORIS
+    let favs: Array<any> = [];
+
+    const updateFavs = async () => {
+        try {
+            if (favsModule) {
+                // S'adapte à la version de l'API de Windy
+                if (typeof favsModule.getAll === 'function') {
+                    favs = await favsModule.getAll();
+                }
+            }
+        } catch (e) {
+            console.error("Erreur lors de la lecture des favoris via l'API Windy", e);
+        }
+    };
+
+    const onFavChange = (event: any) => {
+        const val = event.target.value;
+        if (val !== 'current') {
+            const fav = favs[parseInt(val)];
+            if (fav && fav.lat !== undefined && fav.lon !== undefined) {
+                store.set('pickerLocation', { lat: fav.lat, lon: fav.lon });
+            }
+            event.target.value = 'current'; // Reset pour afficher la position courante
+        }
+    };
 
     const centerTable = () => {
         const container = document.querySelector('.grid-container') as HTMLElement;
@@ -647,6 +691,8 @@
             script.id = 'chartjs-script'; script.src = 'https://cdn.jsdelivr.net/npm/chart.js';
             document.head.appendChild(script);
         }
+
+        updateFavs();
         
         try { store.on('pickerLocation', updateLocation); } catch(e) {}
         try { store.on('mapCoords', updateLocation); } catch(e) {}
@@ -831,11 +877,12 @@
     };
 </script>
 
-<!-- DÉBUT DE LA MODIFICATION (CSS) -->
 <style lang="less">
     .greeting { margin-bottom: 0px; display: inline-block; }
     .top-bar { display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px; }
     
+    .location-selector { max-width: 140px; text-overflow: ellipsis; white-space: nowrap; overflow: hidden; }
+
     .model-selector {
         padding: 4px 8px;
         font-size: 13px;
@@ -913,4 +960,3 @@
     #chart-title { text-align: center; margin-top: 0; font-size: 14px; color: #2c3e50; margin-bottom: 15px; }
     .canvas-wrapper { position: relative; height: 400px; width: 100%; }
 </style>
-<!-- FIN DE LA MODIFICATION -->
