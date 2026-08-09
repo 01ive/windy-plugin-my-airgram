@@ -155,7 +155,6 @@
 <script lang="ts">
     import bcast from "@windy/broadcast";
     import store from "@windy/store";
-    // IMPORT DE GETPOINTFORECASTDATA POUR LES PRÉCIPITATIONS
     import { getMeteogramForecastData, getPointForecastData } from "@windy/fetch";
     import { wind2obj } from "@windy/utils";
     import { onDestroy, onMount, tick } from 'svelte';
@@ -198,6 +197,15 @@
         appConfig = { ...tempConfig };
         showConfig = false;
         if (hourlyProfiles.length > 0) {
+            for (let i = 0; i < grid.length; i++) {
+                for (let j = 0; j < grid[i].length; j++) {
+                    if (grid[i][j]) {
+                        grid[i][j].colorClass = getWindColorClass(grid[i][j].speedKmh);
+                    }
+                }
+            }
+            grid = grid; 
+
             calculateThermals();
             if (selectedHourIndex !== null) drawSondage(selectedHourIndex);
         }
@@ -208,12 +216,11 @@
     let status: string = "";
     let currentModel: string = "";
     let groundElevation: number = 0; 
-    let modElevation: number = 0;
     
-    let times: Array<{ label: string, index: number }> = [];
+    let times: Array<{ label: string, index: number, timestamp: number }> = [];
     let levels: Array<{ key: string, alt: number, label: string, isSurface: boolean, hpa: number }> = [];
     let grid: Array<Array<{ speedKmh: number, dir: number, colorClass: string, cloudCover: number } | null>> = [];
-    let precipitations: Array<number> = []; // TABLEAU DES PRÉCIPITATIONS
+    let precipitations: Array<number> = []; 
     
     let hourlyProfiles: Array<any> = []; 
     let thermalCeilings: Array<any> = [];
@@ -355,7 +362,6 @@
             currentModel = model;
             const currentTime = store.get('timestamp'); 
             
-            // EXÉCUTION EN PARALLÈLE DES DEUX REQUÊTES POUR NE PAS RALENTIR L'AFFICHAGE
             const [forecast, pointForecast] = await Promise.all([
                 getMeteogramForecastData(model, { lat: latitude, lon: longitude, step: currentStep }),
                 getPointForecastData(model, { lat: latitude, lon: longitude, step: currentStep })
@@ -434,7 +440,6 @@
                 const targetTimestamp = times[j].timestamp;
                 let envData = []; 
                 
-                // GESTION SÉCURISÉE DES PRÉCIPITATIONS (Recherche de l'index temporel exact)
                 let mmVal = 0;
                 if (pointTimeArray && pointTimeArray.length > 0) {
                     const pointDataIndex = pointTimeArray.findIndex((t: number) => t === targetTimestamp);
@@ -571,11 +576,62 @@
         }
     };
 
+    let debounceTimer: any = null;
+    let lastSetTimestamp: number = 0;
+
     const selectHour = async (index: number) => {
         selectedHourIndex = index;
         await tick();
         drawSondage(index);
+
+        const targetTs = times[index]?.timestamp;
+        if (targetTs && store.get('timestamp') !== targetTs) {
+            lastSetTimestamp = targetTs;
+            store.set('timestamp', targetTs);
+        }
     };
+
+    const onSettingsChange = () => {
+        const currentTs = store.get('timestamp');
+        
+        if (lastSetTimestamp === currentTs) return;
+        lastSetTimestamp = 0;
+
+        if (lat !== null && lon !== null) {
+            if (debounceTimer) {
+                clearTimeout(debounceTimer);
+            }
+            debounceTimer = setTimeout(() => {
+                fetchWindGrid(lat, lon);
+            }, 250);
+        }
+    };
+
+    const onPickerLocation = (location: any) => {
+        if (location) { lat = location.lat; lon = location.lon; fetchWindGrid(lat, lon); }
+        else { lat = null; lon = null; times = []; levels = []; grid = []; hourlyProfiles = []; status = "Cliquez sur la carte."; }
+    };
+
+    onMount(() => {
+        if (!document.getElementById('chartjs-script')) {
+            const script = document.createElement('script');
+            script.id = 'chartjs-script'; script.src = 'https://cdn.jsdelivr.net/npm/chart.js';
+            document.head.appendChild(script);
+        }
+        
+        try { store.on('pickerLocation', onPickerLocation); } catch(e) {}
+        try { store.on('timestamp', onSettingsChange); } catch(e) {}
+        try { store.on('product', onSettingsChange); } catch(e) {}
+        
+        const currentLoc = store.get('pickerLocation');
+        if (currentLoc) onPickerLocation(currentLoc);
+    });
+
+    onDestroy(() => { 
+        try { store.off('pickerLocation', onPickerLocation); } catch(e) {}
+        try { store.off('timestamp', onSettingsChange); } catch(e) {}
+        try { store.off('product', onSettingsChange); } catch(e) {}
+    });
 
     const drawSondage = (hourIndex: number) => {
         const ChartLib = (window as any).Chart;
@@ -743,45 +799,6 @@
             }]
         });
     };
-
-    let debounceTimer: any = null;
-
-    const onSettingsChange = () => {
-        if (lat !== null && lon !== null) {
-            if (debounceTimer) {
-                clearTimeout(debounceTimer);
-            }
-            debounceTimer = setTimeout(() => {
-                fetchWindGrid(lat, lon);
-            }, 250);
-        }
-    };
-
-    const onPickerLocation = (location: any) => {
-        if (location) { lat = location.lat; lon = location.lon; fetchWindGrid(lat, lon); }
-        else { lat = null; lon = null; times = []; levels = []; grid = []; hourlyProfiles = []; status = "Cliquez sur la carte."; }
-    };
-
-    onMount(() => {
-        if (!document.getElementById('chartjs-script')) {
-            const script = document.createElement('script');
-            script.id = 'chartjs-script'; script.src = 'https://cdn.jsdelivr.net/npm/chart.js';
-            document.head.appendChild(script);
-        }
-        
-        try { store.on('pickerLocation', onPickerLocation); } catch(e) {}
-        try { store.on('timestamp', onSettingsChange); } catch(e) {}
-        try { store.on('product', onSettingsChange); } catch(e) {}
-        
-        const currentLoc = store.get('pickerLocation');
-        if (currentLoc) onPickerLocation(currentLoc);
-    });
-
-    onDestroy(() => { 
-        try { store.off('pickerLocation', onPickerLocation); } catch(e) {}
-        try { store.off('timestamp', onSettingsChange); } catch(e) {}
-        try { store.off('product', onSettingsChange); } catch(e) {}
-    });
 </script>
 
 <style lang="less">
