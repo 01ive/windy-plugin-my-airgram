@@ -12,7 +12,17 @@
     <div class="top-bar">
             {#if lat !== null && lon !== null}
                     📍 {lat.toFixed(4)}, {lon.toFixed(4)}
-                    <small style="color: gray;">{currentModel.toUpperCase()}</small>
+                    <!-- DÉBUT DE LA MODIFICATION -->
+                    <select class="model-selector" value={currentModel} on:change={changeModel}>
+                        <option value="ecmwf">ECMWF</option>
+                        <option value="gfs">GFS</option>
+                        <option value="icon">ICON</option>
+                        <option value="iconEu">ICON-EU</option>
+                        <option value="iconD2">ICON-D2</option>
+                        <option value="aromeFrance">AROME</option>
+                        <option value="czeAladin">ALADIN</option>
+                    </select>
+                    <!-- FIN DE LA MODIFICATION -->
                     <button id="toggle-step-btn" on:click={toggleStep} title="Changer l'intervalle">{currentStep}h</button>
                     <button id="config-btn" title="Configuration" on:click={openConfig}>⚙️</button>
             {/if}
@@ -191,21 +201,18 @@
         if (lat !== null && lon !== null) fetchWindGrid(lat, lon);
     };
 
+    // DÉBUT DE LA MODIFICATION
+    const changeModel = (event: any) => {
+        store.set('product', event.target.value);
+    };
+    // FIN DE LA MODIFICATION
+
     const openConfig = () => { tempConfig = { ...appConfig }; showConfig = true; };
     const closeConfig = () => { showConfig = false; };
     const saveConfig = () => {
         appConfig = { ...tempConfig };
         showConfig = false;
         if (hourlyProfiles.length > 0) {
-            for (let i = 0; i < grid.length; i++) {
-                for (let j = 0; j < grid[i].length; j++) {
-                    if (grid[i][j]) {
-                        grid[i][j].colorClass = getWindColorClass(grid[i][j].speedKmh);
-                    }
-                }
-            }
-            grid = grid; 
-
             calculateThermals();
             if (selectedHourIndex !== null) drawSondage(selectedHourIndex);
         }
@@ -216,6 +223,7 @@
     let status: string = "";
     let currentModel: string = "";
     let groundElevation: number = 0; 
+    let modElevation: number = 0;
     
     let times: Array<{ label: string, index: number, timestamp: number }> = [];
     let levels: Array<{ key: string, alt: number, label: string, isSurface: boolean, hpa: number }> = [];
@@ -372,12 +380,8 @@
                 return; 
             }
 
-            groundElevation = Math.round(
-                forecast.data.header?.elevation || 
-                forecast.data.header?.modelElevation || 
-                forecast.data.data?.header?.modelElevation || 
-                0
-            );
+            modElevation = Math.round(forecast.data.header?.modelElevation || forecast.data.data?.header?.modelElevation || 0);
+            groundElevation = Math.round(forecast.data.header?.elevation || modElevation);
 
             const rawData = forecast.data.data || forecast.data;
             const timeArray = rawData.ts || rawData.hours || rawData.time;
@@ -607,7 +611,6 @@
         }
     };
 
-    // NOUVELLE FONCTION : Automatisation de la position pour PC (Picker) et Mobile (Croix)
     const updateLocation = () => {
         let newLat = null;
         let newLon = null;
@@ -617,7 +620,6 @@
             newLat = loc.lat;
             newLon = loc.lon;
         } else {
-            // Sur mobile, on utilise la croix centrale enregistrée en temps réel par Windy
             const coords = store.get('mapCoords');
             if (coords) {
                 newLat = coords.lat;
@@ -632,7 +634,6 @@
             if (debounceTimer) {
                 clearTimeout(debounceTimer);
             }
-            // Anti-rebond généreux de 400ms pour éviter de spammer le réseau pendant le déplacement mobile
             debounceTimer = setTimeout(() => {
                 fetchWindGrid(lat, lon);
             }, 400); 
@@ -646,7 +647,6 @@
             document.head.appendChild(script);
         }
         
-        // On écoute le picker ET la croix centrale
         try { store.on('pickerLocation', updateLocation); } catch(e) {}
         try { store.on('mapCoords', updateLocation); } catch(e) {}
         try { store.on('timestamp', onSettingsChange); } catch(e) {}
@@ -830,9 +830,24 @@
     };
 </script>
 
+<!-- DÉBUT DE LA MODIFICATION (CSS) -->
 <style lang="less">
     .greeting { margin-bottom: 0px; display: inline-block; }
     .top-bar { display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px; }
+    
+    .model-selector {
+        color: gray;
+        background: transparent;
+        border: 1px solid rgba(0,0,0,0.1);
+        border-radius: 4px;
+        padding: 2px 4px;
+        font-size: 11px;
+        cursor: pointer;
+        text-transform: uppercase;
+        outline: none;
+    }
+    .model-selector:hover { background: rgba(0,0,0,0.05); }
+
     #config-btn { background: none; border: none; font-size: 20px; cursor: pointer; transition: transform 0.3s ease; }
     #config-btn:hover { transform: rotate(45deg); }
     
@@ -897,3 +912,4 @@
     #chart-title { text-align: center; margin-top: 0; font-size: 14px; color: #2c3e50; margin-bottom: 15px; }
     .canvas-wrapper { position: relative; height: 400px; width: 100%; }
 </style>
+<!-- FIN DE LA MODIFICATION -->
