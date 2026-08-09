@@ -204,6 +204,7 @@
     // DÉBUT DE LA MODIFICATION
     const changeModel = (event: any) => {
         store.set('product', event.target.value);
+        if (lat !== null && lon !== null) fetchWindGrid(lat, lon);
     };
     // FIN DE LA MODIFICATION
 
@@ -836,17 +837,17 @@
     .top-bar { display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px; }
     
     .model-selector {
-        color: gray;
-        background: transparent;
-        border: 1px solid rgba(0,0,0,0.1);
-        border-radius: 4px;
-        padding: 2px 4px;
-        font-size: 11px;
+        padding: 4px 8px;
+        font-size: 13px;
         cursor: pointer;
-        text-transform: uppercase;
-        outline: none;
+        border: 1px solid #ccc;
+        border-radius: 6px;
+        background-color: #fff;
+        color: #2980b9;
+        font-weight: bold;
+        transition: all 0.2s;
     }
-    .model-selector:hover { background: rgba(0,0,0,0.05); }
+    .model-selector:hover { background-color: #e8f4f8; border-color: #2980b9; }
 
     #config-btn { background: none; border: none; font-size: 20px; cursor: pointer; transition: transform 0.3s ease; }
     #config-btn:hover { transform: rotate(45deg); }
