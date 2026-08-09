@@ -10,10 +10,9 @@
     </div>
     
     <div class="top-bar">
-            {#if lat !== null && lon !== null}
-                    <!-- NOUVEAU SÉLECTEUR DE FAVORIS AVEC API @windy/favs -->
+            <!-- {#if lat !== null && lon !== null} -->
                     <select class="model-selector location-selector" on:change={onFavChange}>
-                        <option value="current">📍 {lat.toFixed(4)}, {lon.toFixed(4)}</option>
+                        <option value="current">{currentPosition}</option>
                         {#if userFavs.length > 0}
                             <optgroup label="Mes Favoris">
                                 {#each userFavs as fav, index}
@@ -34,7 +33,7 @@
                     </select>
                     <button id="toggle-step-btn" on:click={toggleStep} title="Changer l'intervalle">{currentStep}h</button>
                     <button id="config-btn" title="Configuration" on:click={openConfig}>⚙️</button>
-            {/if}
+            <!-- {/if} -->
     </div>
 
     <!-- MODALE DE CONFIGURATION -->
@@ -191,6 +190,7 @@
     let tempConfig = { ...appConfig };
     let showConfig = false;
     let currentStep = 3;
+    let currentPosition: string = "";
 
     const FIXED_LEVELS = [
         { alt: "11800m", hpa: 200, z: 11800 },
@@ -274,9 +274,6 @@
         if (val !== 'current') {
             const selectedFav = userFavs[parseInt(val)];
             if (selectedFav && selectedFav.lat !== undefined && selectedFav.lon !== undefined) {
-                // Met à jour la position du picker (PC) et de la croix (Mobile)
-                // const { map: windyMap, markers } = W.map;
-                // windyMap.panTo({ lng: selectedFav.lon, lat: selectedFav.lat });
                 store.set('pickerLocation', { lat: selectedFav.lat, lon: selectedFav.lon });
                 store.set('mapCoords', { lat: selectedFav.lat, lon: selectedFav.lon });
                 
@@ -285,6 +282,7 @@
                 const pluginWindows = document.querySelector(`#plugin-content`) as HTMLDivElement;
                 if (W && W.map.map) {
                     if (typeof W.map.map.panTo === 'function') {
+                        W.map.map.setZoom(12);
                         if (W.rootScope.isMobileOrTablet && pluginWindows) {
                             const pluginWindowHeight = pluginWindows.offsetHeight;
                             const mapLatHeight = W.map.map.getBounds().getSouth() - W.map.map.getBounds().getNorth();
@@ -293,10 +291,10 @@
                         } else {
                             W.map.map.panTo([selectedFav.lat, selectedFav.lon]);
                         }
-                        W.map.map.setZoom(12);
                     }
                 }
             }
+            currentPosition = userFavs[val].name || userFavs[val].title || 'Favori ' + (parseInt(val)+1);
             event.target.value = 'current'; // Réinitialise visuellement le sélecteur
         }
     };
@@ -433,7 +431,6 @@
         
         try {
             const model = store.get('product'); 
-            currentModel = model;
             const currentTime = store.get('timestamp'); 
             
             const [forecast, pointForecast] = await Promise.all([
@@ -681,15 +678,18 @@
         let newLat = null;
         let newLon = null;
         
-        const loc = store.get('pickerLocation');
-        if (loc) {
-            newLat = loc.lat;
-            newLon = loc.lon;
-        } else {
+        const W = (window as any).W;
+        if (W.rootScope.isMobileOrTablet) {
             const coords = store.get('mapCoords');
             if (coords) {
                 newLat = coords.lat;
                 newLon = coords.lon;
+            }
+        } else {
+            const loc = store.get('pickerLocation');
+            if (loc) {
+                newLat = loc.lat;
+                newLon = loc.lon;
             }
         }
 
@@ -704,6 +704,8 @@
                 fetchWindGrid(lat, lon);
             }, 400); 
         }
+
+        currentPosition = `📍 ${lat.toFixed(4)}, ${lon.toFixed(4)}`;
     };
 
     onMount(() => {
@@ -714,13 +716,16 @@
         }
         
         loadFavs();
+        const model = store.get('product'); 
+        currentModel = model;
+        currentPosition = "Favorites";
 
         try { store.on('pickerLocation', updateLocation); } catch(e) {}
         try { store.on('mapCoords', updateLocation); } catch(e) {}
         try { store.on('timestamp', onSettingsChange); } catch(e) {}
         try { store.on('product', onSettingsChange); } catch(e) {}
         
-        updateLocation();
+        // updateLocation();
     });
 
     onDestroy(() => { 
