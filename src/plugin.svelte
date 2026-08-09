@@ -1,7 +1,7 @@
 <div class="plugin__mobile-header">
     { title }
 </div>
-<section class="plugin__content">
+<section class="plugin__content" id="plugin-content">
     <div
         class="plugin__title plugin__title--chevron-back"
         on:click={ () => bcast.emit('rqstOpen', 'menu') }
@@ -11,12 +11,12 @@
     
     <div class="top-bar">
             {#if lat !== null && lon !== null}
-                    <!-- NOUVEAU SÉLECTEUR DE FAVORIS -->
+                    <!-- NOUVEAU SÉLECTEUR DE FAVORIS AVEC API @windy/favs -->
                     <select class="model-selector location-selector" on:change={onFavChange}>
                         <option value="current">📍 {lat.toFixed(4)}, {lon.toFixed(4)}</option>
-                        {#if favs.length > 0}
+                        {#if userFavs.length > 0}
                             <optgroup label="Mes Favoris">
-                                {#each favs as fav, index}
+                                {#each userFavs as fav, index}
                                     <option value={index}>{fav.title || fav.name || 'Favori ' + (index+1)}</option>
                                 {/each}
                             </optgroup>
@@ -176,7 +176,7 @@
     import store from "@windy/store";
     import { getMeteogramForecastData, getPointForecastData } from "@windy/fetch";
     import { wind2obj } from "@windy/utils";
-    import favsModule from "@windy/userFavs"; // IMPORT API OFFICIELLE DES FAVORIS
+    import favsModule from "@windy/userFavs";
     import { onDestroy, onMount, tick } from 'svelte';
 
     import config from './pluginConfig';
@@ -254,29 +254,50 @@
     let sondageChartInstance: any = null;
 
     // GESTION DES FAVORIS
-    let favs: Array<any> = [];
+    let userFavs: Array<any> = [];
 
-    const updateFavs = async () => {
+    const loadFavs = async () => {
         try {
             if (favsModule) {
                 // S'adapte à la version de l'API de Windy
                 if (typeof favsModule.getAll === 'function') {
-                    favs = await favsModule.getAll();
+                    userFavs = await favsModule.getAll();
                 }
             }
         } catch (e) {
-            console.error("Erreur lors de la lecture des favoris via l'API Windy", e);
+            console.error("Erreur lecture favs", e);
         }
     };
 
     const onFavChange = (event: any) => {
         const val = event.target.value;
         if (val !== 'current') {
-            const fav = favs[parseInt(val)];
-            if (fav && fav.lat !== undefined && fav.lon !== undefined) {
-                store.set('pickerLocation', { lat: fav.lat, lon: fav.lon });
+            const selectedFav = userFavs[parseInt(val)];
+            if (selectedFav && selectedFav.lat !== undefined && selectedFav.lon !== undefined) {
+                // Met à jour la position du picker (PC) et de la croix (Mobile)
+                // const { map: windyMap, markers } = W.map;
+                // windyMap.panTo({ lng: selectedFav.lon, lat: selectedFav.lat });
+                store.set('pickerLocation', { lat: selectedFav.lat, lon: selectedFav.lon });
+                store.set('mapCoords', { lat: selectedFav.lat, lon: selectedFav.lon });
+                
+                // Centre physiquement la carte sur le nouveau point
+                const W = (window as any).W;
+                const pluginWindows = document.querySelector(`#plugin-content`) as HTMLDivElement;
+                if (W && W.map.map) {
+                    if (typeof W.map.map.panTo === 'function') {
+                        if (W.rootScope.isMobileOrTablet && pluginWindows) {
+                            const pluginWindowHeight = pluginWindows.offsetHeight;
+                            const mapLatHeight = W.map.map.getBounds().getSouth() - W.map.map.getBounds().getNorth();
+                            const newLat = selectedFav.lat + ((mapLatHeight / W.map.map.getSize().y) * pluginWindowHeight) / 2;
+                            W.map.map.panTo({ lng: selectedFav.lon, lat: newLat });
+                        } else {
+                            W.map.map.panTo([selectedFav.lat, selectedFav.lon]);
+                        }
+                        W.map.map.setZoom(12);
+                    }
+                }
             }
-            event.target.value = 'current'; // Reset pour afficher la position courante
+            event.target.value = 'current'; // Réinitialise visuellement le sélecteur
         }
     };
 
@@ -691,9 +712,9 @@
             script.id = 'chartjs-script'; script.src = 'https://cdn.jsdelivr.net/npm/chart.js';
             document.head.appendChild(script);
         }
-
-        updateFavs();
         
+        loadFavs();
+
         try { store.on('pickerLocation', updateLocation); } catch(e) {}
         try { store.on('mapCoords', updateLocation); } catch(e) {}
         try { store.on('timestamp', onSettingsChange); } catch(e) {}
