@@ -2,8 +2,6 @@
 
 A lightweight Windy plugin designed to help you quickly inspect wind and thermal conditions for flight planning. It combines a wind profile table, cloud-base information, and a vertical emagram view in one place.
 
-![screenshot](src/screenshot.jpg)
-
 ## Instalation (Windy private disctribution)
 
 In Windy select Menu then Install plugin and choose Load plugin from URL.
@@ -32,3 +30,16 @@ This plugin is intended for weather visualization and planning support. It is no
 ## Licence
 
 This project is licensed under the **MIT License** - see the [LICENSE](LICENSE) file for details.
+
+## Screenshots
+
+### Computer
+
+![screenshot computer](src/screenshot.jpg)
+
+### Mobile
+
+![screenshot mobile 1](src/screenshot_mobile_1.jpg)
+
+![screenshot mobile 2](src/screenshot_mobile_2.jpg)
+
