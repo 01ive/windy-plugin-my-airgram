@@ -39,27 +39,27 @@
     <!-- MODALE DE CONFIGURATION -->
     {#if showConfig}
         <div id="config-modal">
-            <h3>Configuration</h3>
+            <h3>Parameters</h3>
             <div class="config-section">
-                <strong>Vents Table (km/h)</strong>
-                <div class="config-row"><label>Faible (<span style="color:#2ecc71;">Vert</span>)</label><input type="number" bind:value={tempConfig.windLight} step="1"></div>
-                <div class="config-row"><label>Modéré (<span style="color:#f1c40f;">Jaune</span>)</label><input type="number" bind:value={tempConfig.windMod} step="1"></div>
-                <div class="config-row"><label>Fort (<span style="color:#e67e22;">Orange</span>)</label><input type="number" bind:value={tempConfig.windStrong} step="1"></div>
-                <div class="config-row"><label>Très fort (<span style="color:#e74c3c;">Rouge</span>)</label><input type="number" bind:value={tempConfig.windGale} step="1"></div>
+                <strong>Wind Table (km/h)</strong>
+                <div class="config-row"><label>Low (<span style="color:#2ecc71;">Green</span>)</label><input type="number" bind:value={tempConfig.windLight} step="1"></div>
+                <div class="config-row"><label>Medium (<span style="color:#f1c40f;">Yellow</span>)</label><input type="number" bind:value={tempConfig.windMod} step="1"></div>
+                <div class="config-row"><label>Strong (<span style="color:#e67e22;">Orange</span>)</label><input type="number" bind:value={tempConfig.windStrong} step="1"></div>
+                <div class="config-row"><label>Very Strong (<span style="color:#e74c3c;">Red</span>)</label><input type="number" bind:value={tempConfig.windGale} step="1"></div>
             </div>
             <div class="config-section">
-                <strong>Émagramme (°C / 100m)</strong>
-                <div class="config-row"><label>Seuil Vert (≥)</label><input type="number" bind:value={tempConfig.lapse1} step="0.1"></div>
-                <div class="config-row"><label>Seuil Jaune (≥)</label><input type="number" bind:value={tempConfig.lapse2} step="0.1"></div>
-                <div class="config-row"><label>Seuil Orange (≥)</label><input type="number" bind:value={tempConfig.lapse3} step="0.1"></div>
-                <div class="config-row"><label>Seuil Rouge (≥)</label><input type="number" bind:value={tempConfig.lapse4} step="0.1"></div>
-                <div class="config-row"><label>Seuil Violet (≥)</label><input type="number" bind:value={tempConfig.lapse5} step="0.1"></div>
+                <strong>Emagram (°C / 100m)</strong>
+                <div class="config-row"><label>Green Threshold (≥)</label><input type="number" bind:value={tempConfig.lapse1} step="0.1"></div>
+                <div class="config-row"><label>Yellow Threshold (≥)</label><input type="number" bind:value={tempConfig.lapse2} step="0.1"></div>
+                <div class="config-row"><label>Orange Threshold (≥)</label><input type="number" bind:value={tempConfig.lapse3} step="0.1"></div>
+                <div class="config-row"><label>Red Threshold (≥)</label><input type="number" bind:value={tempConfig.lapse4} step="0.1"></div>
+                <div class="config-row"><label>Purple Threshold (≥)</label><input type="number" bind:value={tempConfig.lapse5} step="0.1"></div>
                 <div class="config-row"><label>SKEW_FACTOR</label><input type="number" bind:value={tempConfig.skewFactor} step="0.01"></div>
-                <div class="config-row"><label>Surchauffe particule (°C)</label><input type="number" bind:value={tempConfig.parcelOffset} step="0.1"></div>
+                <div class="config-row"><label>Ground particle over heating (°C)</label><input type="number" bind:value={tempConfig.parcelOffset} step="0.1"></div>
             </div>
             <div class="config-actions">
-                <button class="btn-cancel" on:click={closeConfig}>Annuler</button>
-                <button class="btn-save" on:click={saveConfig}>Appliquer</button>
+                <button class="btn-cancel" on:click={closeConfig}>Cancel</button>
+                <button class="btn-save" on:click={saveConfig}>Apply</button>
             </div>
         </div>
     {/if}
@@ -73,7 +73,7 @@
                     <table class="wind-grid">
                         <thead>
                             <tr>
-                                <th class="y-axis" style="z-index: 3;">Heure</th>
+                                <th class="y-axis" style="z-index: 3;">Time</th>
                                 {#each times as t, j}
                                     <th 
                                         class="hour-header {selectedHourIndex === j ? 'active' : ''}" 
@@ -87,7 +87,7 @@
                         <tbody>
                             <!-- LIGNE DES PLAFONDS THERMIQUES -->
                             <tr class="ceiling-row">
-                                <th class="y-axis" style="color: #e74c3c;">Plafond (m)</th>
+                                <th class="y-axis" style="color: #e74c3c;">Cloud base (m)</th>
                                 {#each times as t, j}
                                     <td class="{selectedHourIndex === j ? 'active-col' : ''}" style="background-color: #fdf2f0;">
                                         {#if thermalCeilings[j] && thermalCeilings[j].hasThermal}
@@ -146,8 +146,8 @@
                     </table>
                     <!-- LÉGENDE MAMETEO -->
                     <div class="legend-box">
-                        <div class="legend-item"><div class="legend-color" style="background: rgba(170, 180, 190, 0.7);"></div> Nuages</div>
-                        <div class="legend-item"><div class="legend-color" style="border-top: 4px solid #e74c3c; height: 4px; background: transparent;"></div> Plafond Thermique</div>
+                        <div class="legend-item"><div class="legend-color" style="background: rgba(170, 180, 190, 0.7);"></div> Clouds</div>
+                        <div class="legend-item"><div class="legend-color" style="border-top: 4px solid #e74c3c; height: 4px; background: transparent;"></div> Cloud Base</div>
                     </div>
                 </div>
 
@@ -495,7 +495,7 @@
             tempLevels.push({
                 key: 'surface',
                 alt: groundElevation,
-                label: `${groundElevation}m (Sol)`,
+                label: `${groundElevation}m (Ground)`,
                 isSurface: true,
                 hpa: Math.round(1013.25 * Math.pow(1 - 2.25577e-5 * groundElevation, 5.25588))
             });
@@ -776,7 +776,7 @@
             data: {
                 datasets: [
                     {
-                        label: 'Température (°C)', data: envPoints,
+                        label: 'Temperature (°C)', data: envPoints,
                         borderColor: '#333', borderWidth: 2, tension: 0, pointRadius: 0,
                         segment: {
                             borderColor: (ctx: any) => {
@@ -795,8 +795,8 @@
                             }
                         }
                     },
-                    { label: 'Parcelle', data: parcelChartPoints, borderColor: '#f39c12', borderWidth: 1, tension: 0, pointRadius: 0, borderDash: [5, 2] },
-                    { label: 'Pt Rosée (°C)', data: dewPoints, borderColor: '#3498db', borderWidth: 2, tension: 0, pointRadius: 0 }
+                    { label: 'Parcel', data: parcelChartPoints, borderColor: '#f39c12', borderWidth: 1, tension: 0, pointRadius: 0, borderDash: [5, 2] },
+                    { label: 'Dew Point (°C)', data: dewPoints, borderColor: '#3498db', borderWidth: 2, tension: 0, pointRadius: 0 }
                 ]
             },
             options: {
@@ -860,7 +860,7 @@
                             ctx.moveTo(chartArea.left, yPlafond); ctx.lineTo(chartArea.right, yPlafond);
                             ctx.strokeStyle = '#e74c3c'; ctx.lineWidth = 1.5; ctx.stroke();
                             ctx.fillStyle = '#e74c3c'; ctx.font = 'bold 11px sans-serif';
-                            ctx.fillText('Plafond', chartArea.left + 5, yPlafond - 5);
+                            ctx.fillText('Cloud Base', chartArea.left + 5, yPlafond - 5);
                             ctx.restore();
                         }
                     }
@@ -927,10 +927,7 @@
         display: inline-flex;
         align-items: center;
         justify-content: center;
-        // width: 32px;
-        // height: 32px;
         padding: 0;
-        // line-height: 1;
     }
     #config-btn:hover { transform: rotate(180deg); }
     .gear-icon:hover { transform: rotate(180deg); }
