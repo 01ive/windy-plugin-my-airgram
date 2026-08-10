@@ -32,7 +32,7 @@
                         <option value="czeAladin">ALADIN</option>
                     </select>
                     <button id="toggle-step-btn" on:click={toggleStep} title="Changer l'intervalle">{currentStep}h</button>
-                    <button id="config-btn" title="Configuration" on:click={openConfig}>⚙️</button>
+                    <button id="config-btn" title="Configuration" on:click={openConfig}><span class="gear-icon">⚙️</span></button>
             <!-- {/if} -->
     </div>
 
@@ -923,8 +923,23 @@
     }
     .model-selector:hover { background-color: #e8f4f8; border-color: #2980b9; }
 
-    #config-btn { background: none; border: none; font-size: 20px; cursor: pointer; transition: transform 0.3s ease; }
-    #config-btn:hover { transform: rotate(45deg); }
+    #config-btn { background: none; border: none; font-size: 20px; cursor: pointer; //transition: transform 0.3s ease; 
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        // width: 32px;
+        // height: 32px;
+        padding: 0;
+        // line-height: 1;
+    }
+    #config-btn:hover { transform: rotate(180deg); }
+    .gear-icon:hover { transform: rotate(180deg); }
+    .gear-icon {
+        display: inline-block;
+        transition: transform 0.3s ease;
+        transform-origin: center center; /* Force l'axe au centre parfait */
+        will-change: transform; /* Prévient les micro-sauts de rendu pixel */
+    }
     
     #toggle-step-btn {
         padding: 4px 8px;
@@ -939,7 +954,7 @@
     }
     #toggle-step-btn:hover { background-color: #e8f4f8; border-color: #2980b9; }
 
-    #config-modal { position: absolute; top: 50px; left: 15px; background: white; padding: 15px; border-radius: 8px; box-shadow: 0 4px 20px rgba(0,0,0,0.2); z-index: 1000; width: 280px; border: 1px solid #ddd; font-size: 13px; }
+    #config-modal { position: absolute; top: 50px; right: 15px; background: white; padding: 15px; border-radius: 8px; box-shadow: 0 4px 20px rgba(0,0,0,0.2); z-index: 1000; width: 280px; border: 1px solid #ddd; font-size: 13px; }
     #config-modal h3 { margin: 0 0 15px 0; font-size: 15px; color: #2c3e50; border-bottom: 1px solid #eee; padding-bottom: 5px; }
     .config-section { margin-bottom: 15px; }
     .config-section strong { display: block; margin-bottom: 10px; color: #2980b9; }
