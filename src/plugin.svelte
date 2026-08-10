@@ -6,7 +6,7 @@
         class="plugin__title plugin__title--chevron-back"
         on:click={ () => bcast.emit('rqstOpen', 'menu') }
     >
-    { title }
+    🦅 { title }
     </div>
     
     <div class="top-bar">
@@ -14,9 +14,9 @@
                     <select class="model-selector location-selector" on:change={onFavChange}>
                         <option value="current">{currentPosition}</option>
                         {#if userFavs.length > 0}
-                            <optgroup label="Mes Favoris">
+                            <optgroup label="My Favorites">
                                 {#each userFavs as fav, index}
-                                    <option value={index}>{fav.title || fav.name || 'Favori ' + (index+1)}</option>
+                                    <option value={index}>{fav.title || fav.name || 'Favorite ' + (index+1)}</option>
                                 {/each}
                             </optgroup>
                         {/if}
