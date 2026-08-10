@@ -4,6 +4,14 @@ A lightweight Windy plugin designed to help you quickly inspect wind and thermal
 
 ![screenshot](src/screenshot.jpg)
 
+## Instalation (Windy private disctribution)
+
+In Windy select Menu then Install plugin and choose Load plugin from URL.
+
+Enter following URL plugin:
+
+https://windy-plugins.com/4142422/windy-plugin-my-airgram/0.0.1/plugin.min.js
+
 ## ✨ What this plugin does
 
 - Displays a forecast grid for several atmospheric levels
