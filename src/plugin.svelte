@@ -424,6 +424,8 @@
                 parcelPath, cloudZone, cloudBaseAlt, ceilingZ, getEnvAtZForHour
             });
         }
+
+        thermalCeilings = thermalCeilings;  // Force table update
     };
 
     const fetchWindGrid = async (latitude: number, longitude: number) => {
