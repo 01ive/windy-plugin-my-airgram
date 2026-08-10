@@ -153,7 +153,7 @@
 
                 <!-- GRAPHIQUE ÉMAGRAMME -->
                 <div class="chart-container" style="display: {selectedHourIndex !== null ? 'block' : 'none'}; margin-top: 20px;">
-                    <h3 id="chart-title">Profil vertical à {times[selectedHourIndex]?.label || ''}</h3>
+                    <h3 id="chart-title">Vertical profile at {times[selectedHourIndex]?.label || ''}</h3>
                     <div class="canvas-wrapper">
                         <canvas id="sondageChart"></canvas>
                     </div>
@@ -165,7 +165,7 @@
         </div>
     {:else}
         <div class="box">
-            <i>Déplacez la carte ou ouvrez le sélecteur pour sonder la masse d'air.</i>
+            <i>Pick on map or select a favorite location.</i>
         </div>
     {/if}
 </section>
@@ -427,7 +427,7 @@
     };
 
     const fetchWindGrid = async (latitude: number, longitude: number) => {
-        status = "Extraction des données...";
+        status = "Data extraction...";
         times = []; levels = []; grid = []; hourlyProfiles = []; thermalCeilings = []; precipitations = [];
         
         try {
