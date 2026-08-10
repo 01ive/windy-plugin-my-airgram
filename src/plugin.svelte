@@ -275,7 +275,7 @@
             const selectedFav = userFavs[parseInt(val)];
             if (selectedFav && selectedFav.lat !== undefined && selectedFav.lon !== undefined) {
                 store.set('pickerLocation', { lat: selectedFav.lat, lon: selectedFav.lon });
-                store.set('mapCoords', { lat: selectedFav.lat, lon: selectedFav.lon });
+                store.set('mapCoords', { lat: selectedFav.lat, lon: selectedFav.lon, zoom: 12, source: 'globe' });
                 
                 // Centre physiquement la carte sur le nouveau point
                 const W = (window as any).W;
@@ -284,9 +284,10 @@
                     if (typeof W.map.map.panTo === 'function') {
                         W.map.map.setZoom(12);
                         if (W.rootScope.isMobileOrTablet && pluginWindows) {
-                            const pluginWindowHeight = pluginWindows.offsetHeight;
+                            const pickerDot = document.querySelector(`#picker-dot`) as HTMLDivElement;
                             const mapLatHeight = W.map.map.getBounds().getSouth() - W.map.map.getBounds().getNorth();
-                            const newLat = selectedFav.lat + ((mapLatHeight / W.map.map.getSize().y) * pluginWindowHeight) / 2;
+                            const ratioLat = (mapLatHeight / W.map.map.getSize().y);
+                            const newLat = selectedFav.lat + ((W.map.map.getSize().y / 2) - (pickerDot.offsetTop + (pickerDot.offsetHeight / 2))) * ratioLat;
                             W.map.map.panTo({ lng: selectedFav.lon, lat: newLat });
                         } else {
                             W.map.map.panTo([selectedFav.lat, selectedFav.lon]);
