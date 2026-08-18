@@ -369,6 +369,10 @@
         left: auto;
     }
 
+    :global(.y-axis) {
+        color: #000000;
+    }
+
     .box { margin-top: 10px; padding: 12px; background-color: rgba(0, 0, 0, 0.05); border: 1px solid rgba(0, 0, 0, 0.1); border-radius: 6px; font-size: 0.95em; line-height: 1.5; }
     .wind-box { background-color: rgba(41, 128, 185, 0.1); border-color: rgba(41, 128, 185, 0.2); padding: 10px; overflow: hidden; }
 
