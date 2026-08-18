@@ -230,6 +230,8 @@
 
             // document.getElementById('location-altitude').innerText = `\n${Math.round(weather.elevation)}m`;
             // modelSelect.value = weather.model;
+            const currentTime = store.get('timestamp'); 
+            selectPlugginHourFromTime(currentTime);
             updateActiveLevels();    
             renderGrid();
             drawSounding(false);
@@ -259,7 +261,7 @@
     function selectPlugginHourFromTime(time) {
         if(weather.weatherData) {
             for(let i=0; i<weather.weatherData.time.length; i++) {
-                if(time <= (new Date(weather.weatherData.time[i])).getTime()) {
+                if(time < (new Date(weather.weatherData.time[i])).getTime()) {
                     setSelectedHourIndex(i-1);
                     break;
                 }
@@ -280,9 +282,7 @@
                 clearTimeout(debounceTimer);
             }
             debounceTimer = setTimeout(() => {
-                const currentTime = store.get('timestamp'); 
                 fetchWindGrid(lat, lon);
-                selectPlugginHourFromTime(currentTime);
             }, 250);
         }
     };
@@ -314,9 +314,7 @@
                 clearTimeout(debounceTimer);
             }
             debounceTimer = setTimeout(() => {
-                const currentTime = store.get('timestamp'); 
                 fetchWindGrid(lat, lon);
-                selectPlugginHourFromTime(currentTime);
             }, 400); 
         }
 

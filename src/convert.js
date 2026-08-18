@@ -37,8 +37,8 @@ function convertWindyToOpenMeteo(windyObj, windyPointForecast) {
   for (let i = 0; i < hours.length; i++) {
     // Formatage du timestamp en ISO 8601 (YYYY-MM-DDTHH:mm)
     const date = new Date(hours[i]);
-    const isoTime = date.toISOString().substring(0, 16); 
-    openMeteo.hourly.time.push(isoTime);
+    // const isoTime = date.toISOString().substring(0, 16); 
+    openMeteo.hourly.time.push(date);
 
     // Extraction et conversion de la température en surface (Kelvin vers Celsius)
     const tempSurfaceK = wData["temp-surface"][i];
@@ -97,7 +97,7 @@ function convertWindyToOpenMeteo(windyObj, windyPointForecast) {
 
     // Extraction des précipitations
     const precip = wPtForecast.precipAmount[i];
-    if (precip != null) {
+    if( (precip != null) && ((new Date(date)).getHours() == wPtForecast.hour[i]) ) {
       openMeteo.hourly.precipitation.push(precip);
     } else {
       openMeteo.hourly.precipitation.push(null);
