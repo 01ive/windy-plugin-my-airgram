@@ -79,7 +79,6 @@
     import bcast from "@windy/broadcast";
     import store from "@windy/store";
     import { getMeteogramForecastData, getPointForecastData } from "@windy/fetch";
-    import { wind2obj } from "@windy/utils";
     import favsModule from "@windy/userFavs";
     import { onDestroy, onMount, tick } from 'svelte';
 
@@ -108,20 +107,11 @@
     
     let currentStep = 3;
     let currentPosition: string = "";
-
-    const FIXED_LEVELS = [
-        { alt: "11800m", hpa: 200, z: 11800 },
-        { alt: "10500m", hpa: 250, z: 10500 },
-        { alt: "9000m",  hpa: 300, z: 9000 },
-        { alt: "7000m",  hpa: 400, z: 7000 },
-        { alt: "5500m",  hpa: 500, z: 5500 },
-        { alt: "4000m",  hpa: 600, z: 4000 },
-        { alt: "3000m",  hpa: 700, z: 3000 },
-        { alt: "2000m",  hpa: 800, z: 2000 },
-        { alt: "1500m",  hpa: 850, z: 1500 },
-        { alt: "1000m",  hpa: 900, z: 1000 },
-        { alt: "500m",   hpa: 950, z: 500 }
-    ];
+    let lat: number | null = null;
+    let lon: number | null = null;
+    let currentModel: string = "";
+    let groundElevation: number = 0; 
+    let modElevation: number = 0;
 
     const toggleStep = () => {
         currentStep = currentStep === 3 ? 1 : 3;
@@ -132,22 +122,6 @@
         store.set('product', event.target.value);
         if (lat !== null && lon !== null) fetchWindGrid(lat, lon);
     };
-
-    let lat: number | null = null;
-    let lon: number | null = null;
-    let status: string = "";
-    let currentModel: string = "";
-    let groundElevation: number = 0; 
-    let modElevation: number = 0;
-    
-    let times: Array<{ label: string, index: number, timestamp: number }> = [];
-    let levels: Array<{ key: string, alt: number, label: string, isSurface: boolean, hpa: number }> = [];
-    let grid: Array<Array<{ speedKmh: number, dir: number, colorClass: string, cloudCover: number } | null>> = [];
-    let precipitations: Array<number> = []; 
-    
-    let hourlyProfiles: Array<any> = []; 
-    let thermalCeilings: Array<any> = [];
-    let sondageChartInstance: any = null;
 
     // GESTION DES FAVORIS
     let userFavs: Array<any> = [];
@@ -197,9 +171,6 @@
     };
 
     const fetchWindGrid = async (latitude: number, longitude: number) => {
-        status = "Data extraction...";
-        times = []; levels = []; grid = []; hourlyProfiles = []; thermalCeilings = []; precipitations = [];
-        
         try {
             const model = store.get('product');
             
@@ -228,8 +199,6 @@
             }
             weather.weatherData = data.hourly;
 
-            // document.getElementById('location-altitude').innerText = `\n${Math.round(weather.elevation)}m`;
-            // modelSelect.value = weather.model;
             const currentTime = store.get('timestamp'); 
             selectPlugginHourFromTime(currentTime);
             updateActiveLevels();    
