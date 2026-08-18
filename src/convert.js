@@ -4,8 +4,9 @@
  * @param {Object} windyObj - L'objet de réponse brut de Windy
  * @returns {Object} - L'objet structuré au format OpenMeteo
  */
-function convertWindyToOpenMeteo(windyObj) {
+function convertWindyToOpenMeteo(windyObj, windyPointForecast) {
   const wData = windyObj.data.data;
+  const wPtForecast = windyPointForecast.data.data;
   const hours = wData.hours;
 
   // Initialisation de la structure de base OpenMeteo
@@ -16,7 +17,8 @@ function convertWindyToOpenMeteo(windyObj) {
     hourly: {
       time: [],
       temperature_2m: [],
-      dewpoint_2m: [] // Ajout du champ pour le point de rosée en surface
+      dewpoint_2m: [], // Ajout du champ pour le point de rosée en surface
+      precipitation: []
     }
   };
 
@@ -92,6 +94,14 @@ function convertWindyToOpenMeteo(windyObj) {
         openMeteo.hourly[`winddirection_${level}hPa`].push(null);
       }
     });
+
+    // Extraction des précipitations
+    const precip = wPtForecast.precipAmount[i];
+    if (precip != null) {
+      openMeteo.hourly.precipitation.push(precip);
+    } else {
+      openMeteo.hourly.precipitation.push(null);
+    }
   }
 
   return openMeteo;

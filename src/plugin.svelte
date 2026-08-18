@@ -217,7 +217,7 @@
             groundElevation = Math.round(forecast.data.header?.elevation || modElevation);
 
             // Windy data conversion
-            let data = convertWindyToOpenMeteo(forecast);
+            let data = convertWindyToOpenMeteo(forecast, pointForecast);
 
             weather.elevation = groundElevation;
 
