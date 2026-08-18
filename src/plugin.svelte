@@ -92,7 +92,7 @@
 
     import { common, updateActiveLevels } from '../../../mameteo/src/common.js'
 
-    import { LEVELS, windGrid, renderGrid, getWindColorClass } from "../../../mameteo/src/table.js"
+    import { LEVELS, windGrid, selectedHourIndex, setSelectedHourIndex, setCallBackOnClick, renderGrid, getWindColorClass } from "../../../mameteo/src/table.js"
     import '../../../mameteo/src/table.css';
 
     import { drawSounding } from "../../../mameteo/src/sounding.js"
@@ -147,7 +147,6 @@
     
     let hourlyProfiles: Array<any> = []; 
     let thermalCeilings: Array<any> = [];
-    let selectedHourIndex: number | null = null;
     let sondageChartInstance: any = null;
 
     // GESTION DES FAVORIS
@@ -202,8 +201,7 @@
         times = []; levels = []; grid = []; hourlyProfiles = []; thermalCeilings = []; precipitations = [];
         
         try {
-            const model = store.get('product'); 
-            const currentTime = store.get('timestamp'); 
+            const model = store.get('product');
             
             const [forecast, pointForecast] = await Promise.all([
                 getMeteogramForecastData(model, { lat: latitude, lon: longitude, step: currentStep }),
@@ -232,7 +230,6 @@
 
             // document.getElementById('location-altitude').innerText = `\n${Math.round(weather.elevation)}m`;
             // modelSelect.value = weather.model;
-
             updateActiveLevels();    
             renderGrid();
             drawSounding(false);
@@ -252,30 +249,40 @@
     let debounceTimer: any = null;
     let lastSetTimestamp: number = 0;
 
-    const selectHour = async (index: number) => {
-        selectedHourIndex = index;
-        await tick();
-        drawSondage(index);
-
-        const targetTs = times[index]?.timestamp;
-        if (targetTs && store.get('timestamp') !== targetTs) {
-            lastSetTimestamp = targetTs;
-            store.set('timestamp', targetTs);
-        }
+    const selectHour = () => {
+        const index = selectedHourIndex;
+        const targetTs = (new Date(weather.weatherData.time[index])).getTime();
+        lastSetTimestamp = targetTs;
+        store.set('timestamp', targetTs);
     };
+
+    function selectPlugginHourFromTime(time) {
+        if(weather.weatherData) {
+            for(let i=0; i<weather.weatherData.time.length; i++) {
+                if(time <= (new Date(weather.weatherData.time[i])).getTime()) {
+                    setSelectedHourIndex(i-1);
+                    break;
+                }
+            }
+        } else {
+            setSelectedHourIndex(2);
+        }
+    }
 
     const onSettingsChange = () => {
         const currentTs = store.get('timestamp');
         
         if (lastSetTimestamp === currentTs) return;
-        lastSetTimestamp = 0;
+        lastSetTimestamp = currentTs;
 
         if (lat !== null && lon !== null) {
             if (debounceTimer) {
                 clearTimeout(debounceTimer);
             }
             debounceTimer = setTimeout(() => {
+                const currentTime = store.get('timestamp'); 
                 fetchWindGrid(lat, lon);
+                selectPlugginHourFromTime(currentTime);
             }, 250);
         }
     };
@@ -307,7 +314,9 @@
                 clearTimeout(debounceTimer);
             }
             debounceTimer = setTimeout(() => {
+                const currentTime = store.get('timestamp'); 
                 fetchWindGrid(lat, lon);
+                selectPlugginHourFromTime(currentTime);
             }, 400); 
         }
 
@@ -325,17 +334,12 @@
         const model = store.get('product'); 
         currentModel = model;
         currentPosition = "Favorites";
+        setCallBackOnClick(selectHour);
 
         try { store.on('pickerLocation', updateLocation); } catch(e) {}
         try { store.on('mapCoords', updateLocation); } catch(e) {}
         try { store.on('timestamp', onSettingsChange); } catch(e) {}
         try { store.on('product', onSettingsChange); } catch(e) {}
-
-
-        // loadingDiv.style.visibility = 'visible';
-        // windGrid.innerHTML = '';
-        // const chartSection = document.getElementById('chart-section');
-        // chartSection.style.display = 'none';
     });
 
     onDestroy(() => { 
