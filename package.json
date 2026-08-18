@@ -40,5 +40,8 @@
         "@swc/core@1.15.43": true,
         "svelte-preprocess@5.1.4": true,
         "unrs-resolver@1.12.2": true
+    },
+    "devDependencies": {
+        "rollup-plugin-postcss": "^4.0.2"
     }
 }
