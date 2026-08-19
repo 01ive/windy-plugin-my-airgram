@@ -84,12 +84,12 @@
     import config from './pluginConfig';
 
     // mameteo modules and CSS
-    import { lapseRateColor, appConfig, openConfig, closeConfig, saveConfig } from "../../../mameteo/src/config.js"
+    import { openConfig, closeConfig, saveConfig } from "../../../mameteo/src/config.js"
     import '../../../mameteo/src/config.css';
 
-    import { common, updateActiveLevels } from '../../../mameteo/src/common.js'
+    import { updateActiveLevels } from '../../../mameteo/src/common.js'
 
-    import { LEVELS, windGrid, selectedHourIndex, setSelectedHourIndex, setCallBackOnClick, renderGrid, getWindColorClass } from "../../../mameteo/src/table.js"
+    import { selectedHourIndex, setSelectedHourIndex, setCallBackOnClick, renderGrid } from "../../../mameteo/src/table.js"
     import '../../../mameteo/src/table.css';
 
     import { drawSounding } from "../../../mameteo/src/sounding.js"
@@ -101,19 +101,29 @@
     // Locals modules imports
     import { convertWindyToOpenMeteo } from './convert.js'
    
+    // Constants
+    // -------------------------------------------------------------------------------------------------
     const { title } = config;
-    
-    let currentStep = 3;
-    let currentPosition: string = "";
+
+    // Variables
+    // -------------------------------------------------------------------------------------------------
     let lat: number | null = null;
     let lon: number | null = null;
+    let lastSetTimestamp: number = 0;
+    let lastSetPickerLocation: number = 0;
+
+    // Svelte variables
+    let currentStep = 3;
+    let currentPosition: string = "";
     let currentModel: string = "";
-    let groundElevation: number = 0; 
-    let modElevation: number = 0;
     let textInfo: string = "<h2>Click on map or select favorite.</h2>";
+    let userFavs: Array<any> = [];
 
-    let favLocationTimer: any = null;
-
+    // Timers
+    let debounceTimer: any = null;
+    
+    // Functions
+    // -------------------------------------------------------------------------------------------------
     const toggleStep = () => {
         currentStep = currentStep === 3 ? 1 : 3;
         if (lat !== null && lon !== null) fetchWindGrid(lat, lon);
@@ -124,9 +134,7 @@
         if (lat !== null && lon !== null) fetchWindGrid(lat, lon);
     };
 
-    // GESTION DES FAVORIS
-    let userFavs: Array<any> = [];
-
+    // Favoris
     const loadFavs = async () => {
         try {
             if (favsModule) {
@@ -145,7 +153,7 @@
         if (val !== 'current') {
             const selectedFav = userFavs[parseInt(val)];
             if (selectedFav && selectedFav.lat !== undefined && selectedFav.lon !== undefined) {
-                store.set('pickerLocation', { lat: selectedFav.lat, lon: selectedFav.lon });
+                // store.set('pickerLocation', { lat: selectedFav.lat, lon: selectedFav.lon });
                 store.set('mapCoords', { lat: selectedFav.lat, lon: selectedFav.lon, zoom: 12, source: 'globe' });
                 
                 lat = selectedFav.lat;
@@ -158,11 +166,12 @@
                     if (typeof W.map.map.panTo === 'function') {
                         W.map.map.setZoom(12);
                         if (W.rootScope.isMobileOrTablet && pluginWindows) {
-                            const pickerDot = document.querySelector(`#picker-dot`) as HTMLDivElement;
-                            const mapLatHeight = W.map.map.getBounds().getSouth() - W.map.map.getBounds().getNorth();
-                            const ratioLat = (mapLatHeight / W.map.map.getSize().y);
-                            const newLat = selectedFav.lat + ((W.map.map.getSize().y / 2) - (pickerDot.offsetTop + (pickerDot.offsetHeight / 2))) * ratioLat;
-                            W.map.map.panTo({ lng: selectedFav.lon, lat: newLat });
+                            // const pickerDot = document.querySelector(`#picker-dot`) as HTMLDivElement;
+                            // const mapLatHeight = W.map.map.getBounds().getSouth() - W.map.map.getBounds().getNorth();
+                            // const ratioLat = (mapLatHeight / W.map.map.getSize().y);
+                            // const newLat = selectedFav.lat + ((W.map.map.getSize().y / 2) - (pickerDot.offsetTop + (pickerDot.offsetHeight / 2))) * ratioLat;
+                            // W.map.map.panTo({ lng: selectedFav.lon, lat: newLat });
+                            W.map.map.panTo([selectedFav.lat, selectedFav.lon]);
                         } else {
                             W.map.map.panTo([selectedFav.lat, selectedFav.lon]);
                         }
@@ -171,12 +180,18 @@
             }
             currentPosition = userFavs[val].name || userFavs[val].title || 'Favori ' + (parseInt(val)+1);
             event.target.value = 'current'; // Réinitialise visuellement le sélecteur
+            fetchWindGrid(selectedFav.lat, selectedFav.lon);
         }
     };
 
+    // Fetch weather data
     const fetchWindGrid = async (latitude: number, longitude: number) => {
         try {
             const model = store.get('product');
+            const currentTime = store.get('timestamp'); 
+
+            let groundElevation: number = 0; 
+            let modElevation: number = 0;
             
             const [forecast, pointForecast] = await Promise.all([
                 getMeteogramForecastData(model, { lat: latitude, lon: longitude, step: currentStep }),
@@ -202,7 +217,6 @@
             }
             weather.weatherData = data.hourly;
 
-            const currentTime = store.get('timestamp'); 
             selectPlugginHourFromTime(currentTime);
             updateActiveLevels();    
             renderGrid();
@@ -229,21 +243,11 @@
         }
     };
 
-    let debounceTimer: any = null;
-    let lastSetTimestamp: number = 0;
-
     const selectHour = () => {
         const index = selectedHourIndex;
         const targetTs = (new Date(weather.weatherData.time[index])).getTime();
         lastSetTimestamp = targetTs;
         store.set('timestamp', targetTs);
-        if (favLocationTimer) {
-                clearTimeout(favLocationTimer);
-        }
-        store.off('pickerLocation', updateLocation);
-        favLocationTimer = setTimeout(() => {
-            store.on('pickerLocation', updateLocation);
-        }, 500);
     };
 
     function selectPlugginHourFromTime(time) {
@@ -288,9 +292,10 @@
             }
         } else {
             const loc = store.get('pickerLocation');
-            if (loc) {
+            if( (lastSetPickerLocation.lat != loc.lat) || (lastSetPickerLocation.lon != loc.lon)){
                 newLat = loc.lat;
                 newLon = loc.lon;
+                lastSetPickerLocation = loc;
             }
         }
 
@@ -303,10 +308,10 @@
             }
             debounceTimer = setTimeout(() => {
                 fetchWindGrid(lat, lon);
-            }, 400); 
-        }
+            }, 400);
 
-        currentPosition = `📍 ${lat.toFixed(4)}, ${lon.toFixed(4)}`;
+            currentPosition = `📍 ${lat.toFixed(4)}, ${lon.toFixed(4)}`;
+        }
     };
 
     onMount(() => {
