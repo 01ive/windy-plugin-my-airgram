@@ -68,10 +68,9 @@
             <div class="canvas-wrapper">
                 <canvas id="sondageChart"></canvas>
             </div>
-            <!-- Nouvelle zone pour les infos du modèle -->
-            <div id="model-info" style="text-align: center; font-size: 11px; color: #7f8c8d; margin-top: 15px; padding-top: 10px; border-top: 1px solid #eee;"></div>
         </div>
     </div>
+    <div id="info" style="text-align: center; font-size: 12px; color: #7f8c8d; margin-top: 15px; padding-top: 10px; border-top: 1px solid #eee;">{@html textInfo}</div>
 </section>
 
 <script lang="ts">
@@ -112,6 +111,7 @@
     let currentModel: string = "";
     let groundElevation: number = 0; 
     let modElevation: number = 0;
+    let textInfo: string = "<h2>Click on map or select favorite.</h2>";
 
     const toggleStep = () => {
         currentStep = currentStep === 3 ? 1 : 3;
@@ -204,6 +204,13 @@
             updateActiveLevels();    
             renderGrid();
             drawSounding(false);
+
+            textInfo = `<h3>Altitude: ${groundElevation}m</h3><p>
+                        <strong>Model info</strong><br>
+                        ref time: ${forecast.data.header.refTime}<br>
+                        update time: ${forecast.data.header.update}<br>
+                        elevation: ${forecast.data.header.modelElevation}m
+                        `;
 
         } catch (error) {
             console.error("Erreur d'extraction :", error);
