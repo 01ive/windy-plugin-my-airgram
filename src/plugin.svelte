@@ -59,6 +59,13 @@
         </div>
     </div>
 
+    {#if groundElevation != null}
+    <div id="alti-temp">
+        <span id="altitude"><h3>⛰️ {groundElevation}m</h3></span>
+        <span id="temperature"><h3>🌡️ {groundTemperature}°C</h3></span>
+    </div>
+    {/if}
+
     <div class="grid-chart-layout">
         <div class="grid-container">
             <table id="wind-grid"></table>
@@ -69,7 +76,9 @@
             </div>
         </div>
     </div>
-    <div id="info" style="text-align: center; font-size: 12px; color: #7f8c8d; margin-top: 15px; padding-top: 10px; border-top: 1px solid #eee;">{@html textInfo}</div>
+    <div id="status" style="text-align: center; font-size: 12px; color: #7f8c8d;">{@html textStatus}</div>
+    <p></p>
+    <div id="info"><a href="https://github.com/01ive/windy-plugin-my-airgram">ℹ️</a></div>
 </section>
 
 <script lang="ts">
@@ -78,25 +87,25 @@
     import store from "@windy/store";
     import { getMeteogramForecastData, getPointForecastData } from "@windy/fetch";
     import favsModule from "@windy/userFavs";
-    import { onDestroy, onMount, tick } from 'svelte';
+    import { onDestroy, onMount } from 'svelte';
 
     // Windy config
     import config from './pluginConfig';
 
     // mameteo modules and CSS
-    import { openConfig, closeConfig, saveConfig } from "../../../mameteo/src/config.js"
-    import '../../../mameteo/src/config.css';
+    import { openConfig, closeConfig, saveConfig } from "../maMeteo/src/config.js"
+    import '../maMeteo/src/config.css';  
 
-    import { updateActiveLevels } from '../../../mameteo/src/common.js'
+    import { updateActiveLevels } from '../maMeteo/src/common.js'
 
-    import { selectedHourIndex, setSelectedHourIndex, setCallBackOnClick, renderGrid } from "../../../mameteo/src/table.js"
-    import '../../../mameteo/src/table.css';
+    import { selectedHourIndex, setSelectedHourIndex, setCallBackOnClick, renderGrid } from "../maMeteo/src/table.js"
+    import '../maMeteo/src/table.css';
 
-    import { drawSounding } from "../../../mameteo/src/sounding.js"
-    import '../../../mameteo/src/sounding.css';
+    import { drawSounding } from "../maMeteo/src/sounding.js"
+    import '../maMeteo/src/sounding.css';
 
     // Used for global variables access
-    import { weather } from '../../../mameteo/src/weather.js'
+    import { weather } from '../maMeteo/src/weather.js'
 
     // Locals modules imports
     import { convertWindyToOpenMeteo } from './convert.js'
@@ -116,8 +125,10 @@
     let currentStep = 3;
     let currentPosition: string = "";
     let currentModel: string = "";
-    let textInfo: string = "<h2>Click on map or select favorite.</h2>";
+    let textStatus: string = "<h2>Click on map or select favorite.</h2>";
     let userFavs: Array<any> = [];
+    let groundElevation: number = null; 
+    let groundTemperature: number = null; 
 
     // Timers
     let debounceTimer: any = null;
@@ -190,7 +201,6 @@
             const model = store.get('product');
             const currentTime = store.get('timestamp'); 
 
-            let groundElevation: number = 0; 
             let modElevation: number = 0;
             
             const [forecast, pointForecast] = await Promise.all([
@@ -203,12 +213,11 @@
             }
 
             modElevation = Math.round(forecast.data.header?.modelElevation || forecast.data.data?.header?.modelElevation || 0);
-            groundElevation = Math.round(forecast.data.header?.elevation || modElevation);
 
             // Windy data conversion
             let data = convertWindyToOpenMeteo(forecast, pointForecast);
 
-            weather.elevation = groundElevation;
+            weather.elevation = Math.round(forecast.data.header?.elevation);
 
             // Format usefull daily data
             weather.dailyData = {
@@ -222,9 +231,8 @@
             renderGrid();
             drawSounding(false);
 
-            textInfo = `<h3>Altitude: ${groundElevation}m</h3>
-                        Grd temp: ${weather.weatherData.temperature_2m[selectedHourIndex]}°C
-                        <p>
+            setLocalInfo();
+            textStatus = `
                         <strong>Model info</strong><br>
                         ref time: ${forecast.data.header.refTime}<br>
                         update time: ${forecast.data.header.update}<br>
@@ -238,10 +246,15 @@
                 currentStep = 3;
                 fetchWindGrid(latitude, longitude);
             } else {
-                textInfo = `<h2><span style="color: #ff0000">${error}</span></h2>`;
+                textStatus = `<h2><span style="color: #ff0000">${error}</span></h2>`;
             }
         }
     };
+
+    function setLocalInfo() {
+        groundElevation = weather.elevation;
+        groundTemperature = weather.weatherData.temperature_2m[selectedHourIndex];
+    }
 
     // CallBack when table hour is updated
     const selectHour = () => {
@@ -249,6 +262,7 @@
         const targetTs = (new Date(weather.weatherData.time[index])).getTime();
         lastSetTimestamp = targetTs;
         store.set('timestamp', targetTs);
+        setLocalInfo();
     };
 
     // Set plugin hour using Windy chronotime
@@ -423,5 +437,18 @@
         flex-direction: column;
         gap: 20px;
         width: 100%;
+    }
+
+    #info {
+        display: flex;
+        flex-direction: row;
+        align-items: center;
+        justify-content: space-around;
+        font-size: 20px;
+    }
+
+    #alti-temp {
+        display: flex;
+        justify-content: space-between;
     }
 </style>

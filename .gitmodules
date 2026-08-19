@@ -1,0 +1,3 @@
+[submodule "maMeteo"]
+	path = maMeteo
+	url = https://github.com/01ive/maMeteo.git
