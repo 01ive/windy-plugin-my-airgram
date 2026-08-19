@@ -112,6 +112,8 @@
     let modElevation: number = 0;
     let textInfo: string = "<h2>Click on map or select favorite.</h2>";
 
+    let favLocationTimer: any = null;
+
     const toggleStep = () => {
         currentStep = currentStep === 3 ? 1 : 3;
         if (lat !== null && lon !== null) fetchWindGrid(lat, lon);
@@ -146,6 +148,9 @@
                 store.set('pickerLocation', { lat: selectedFav.lat, lon: selectedFav.lon });
                 store.set('mapCoords', { lat: selectedFav.lat, lon: selectedFav.lon, zoom: 12, source: 'globe' });
                 
+                lat = selectedFav.lat;
+                lon = selectedFav.lon;
+
                 // Centre physiquement la carte sur le nouveau point
                 const W = (window as any).W;
                 const pluginWindows = document.querySelector(`#plugin-content`) as HTMLDivElement;
@@ -179,8 +184,7 @@
             ]);
             
             if (!forecast || !forecast.data || !pointForecast || !pointForecast.data) { 
-                status = "Données indisponibles."; 
-                return; 
+                throw "Can't get forecast data."; 
             }
 
             modElevation = Math.round(forecast.data.header?.modelElevation || forecast.data.data?.header?.modelElevation || 0);
@@ -220,7 +224,7 @@
                 currentStep = 3;
                 fetchWindGrid(latitude, longitude);
             } else {
-                status = "Erreur lors du sondage.";
+                textInfo = `<h2><span style="color: #ff0000">${error}</span></h2>`;
             }
         }
     };
@@ -233,6 +237,13 @@
         const targetTs = (new Date(weather.weatherData.time[index])).getTime();
         lastSetTimestamp = targetTs;
         store.set('timestamp', targetTs);
+        if (favLocationTimer) {
+                clearTimeout(favLocationTimer);
+        }
+        store.off('pickerLocation', updateLocation);
+        favLocationTimer = setTimeout(() => {
+            store.on('pickerLocation', updateLocation);
+        }, 500);
     };
 
     function selectPlugginHourFromTime(time) {
@@ -311,15 +322,23 @@
         currentPosition = "Favorites";
         setCallBackOnClick(selectHour);
 
-        try { store.on('pickerLocation', updateLocation); } catch(e) {}
-        try { store.on('mapCoords', updateLocation); } catch(e) {}
+        const W = (window as any).W;
+        if (W.rootScope.isMobileOrTablet) {
+            try { store.on('mapCoords', updateLocation); } catch(e) {}
+        } else {
+            try { store.on('pickerLocation', updateLocation); } catch(e) {}
+        }
         try { store.on('timestamp', onSettingsChange); } catch(e) {}
         try { store.on('product', onSettingsChange); } catch(e) {}
     });
 
     onDestroy(() => { 
-        try { store.off('pickerLocation', updateLocation); } catch(e) {}
-        try { store.off('mapCoords', updateLocation); } catch(e) {}
+        const W = (window as any).W;
+        if (W.rootScope.isMobileOrTablet) {
+            try { store.off('mapCoords', updateLocation); } catch(e) {}
+        } else {
+            try { store.off('pickerLocation', updateLocation); } catch(e) {}
+        }
         try { store.off('timestamp', onSettingsChange); } catch(e) {}
         try { store.off('product', onSettingsChange); } catch(e) {}
     });
