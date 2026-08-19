@@ -28,7 +28,9 @@
                 "./node_modules/@windycom/plugin-devtools/types/*",
                 "./node_modules/@windycom/plugin-devtools/types/client/*",
             ],
-        }
+        },
+        "allowJs": true,
+        "checkJs": false
     },
     "include": ["**/*.ts", "**/*.svelte"],
 }

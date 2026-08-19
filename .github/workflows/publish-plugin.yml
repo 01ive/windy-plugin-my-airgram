@@ -9,7 +9,9 @@ jobs:
         env:
             WINDY_API_KEY: '${{ secrets.WINDY_API_KEY }}'
         steps:
-            - uses: actions/checkout@v2
+            - uses: actions/checkout@v4
+              with:
+                  submodules: recursive
             - name: Build
               run: |
                   npm install

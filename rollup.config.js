@@ -12,6 +12,8 @@ import sveltePreprocess from 'svelte-preprocess';
 
 import { transformCodeToESMPlugin, keyPEM, certificatePEM } from '@windycom/plugin-devtools';
 
+import postcss from 'rollup-plugin-postcss';
+
 const useSourceMaps = true;
 
 const buildConfigurations = {
@@ -115,5 +117,9 @@ export default {
                     cert: certificatePEM,
                 },
             }),
-    ],
+        postcss({
+            inject: true, // Magique : insère le CSS dans le <head> automatiquement !
+            minimize: true
+            })
+    ]
 };
