@@ -243,6 +243,7 @@
         }
     };
 
+    // CallBack when table hour is updated
     const selectHour = () => {
         const index = selectedHourIndex;
         const targetTs = (new Date(weather.weatherData.time[index])).getTime();
@@ -250,6 +251,7 @@
         store.set('timestamp', targetTs);
     };
 
+    // Set plugin hour using Windy chronotime
     function selectPlugginHourFromTime(time) {
         if(weather.weatherData) {
             for(let i=0; i<weather.weatherData.time.length; i++) {
@@ -263,6 +265,7 @@
         }
     }
 
+    // Call on Windy events 'timestamp' and 'product'
     const onSettingsChange = () => {
         const currentTs = store.get('timestamp');
         
@@ -279,6 +282,7 @@
         }
     };
 
+    // Call on Windy events 'mapCoords' and 'pickerLocation'
     const updateLocation = () => {
         let newLat = null;
         let newLon = null;
@@ -314,6 +318,7 @@
         }
     };
 
+    // Svelte hooks
     onMount(() => {
         if (!document.getElementById('chartjs-script')) {
             const script = document.createElement('script');
