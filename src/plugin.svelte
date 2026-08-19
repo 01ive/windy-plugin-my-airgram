@@ -64,7 +64,6 @@
             <table id="wind-grid"></table>
         </div>
         <div class="chart-container" id="chart-section">
-            <h3 id="chart-title">Profil vertical</h3>
             <div class="canvas-wrapper">
                 <canvas id="sondageChart"></canvas>
             </div>
@@ -205,7 +204,9 @@
             renderGrid();
             drawSounding(false);
 
-            textInfo = `<h3>Altitude: ${groundElevation}m</h3><p>
+            textInfo = `<h3>Altitude: ${groundElevation}m</h3>
+                        Grd temp: ${weather.weatherData.temperature_2m[selectedHourIndex]}°C
+                        <p>
                         <strong>Model info</strong><br>
                         ref time: ${forecast.data.header.refTime}<br>
                         update time: ${forecast.data.header.update}<br>
