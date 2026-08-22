@@ -8,7 +8,7 @@ In Windy select Menu then Install plugin and choose Load plugin from URL.
 
 Enter following URL plugin:
 
-https://windy-plugins.com/4142422/windy-plugin-aero-clear/0.0.1/plugin.min.js
+https://windy-plugins.com/4142422/windy-plugin-aero-clear/0.0.2/plugin.min.js
 
 ## ✨ What this plugin does
 

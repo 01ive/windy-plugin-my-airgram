@@ -42,6 +42,7 @@
         <h2>Configuration</h2>
         <div class="config-section">
             <h3>Wind table (km/h)</h3>
+            <div class="config-row"><label>Altitude max</label><input type="number" id="cfg-altitude-max" step="500"></div>
             <div class="config-row"><label>Low (<span class="wind-light">Vert</span>)</label><input type="number" id="cfg-wind-light" step="1"></div>
             <div class="config-row"><label>Medium (<span class="wind-mod">Jaune</span>)</label><input type="number" id="cfg-wind-mod" step="1"></div>
             <div class="config-row"><label>Strong (<span class="wind-strong">Orange</span>)</label><input type="number" id="cfg-wind-strong" step="1"></div>
@@ -83,10 +84,12 @@
     {#if (groundElevation != null) && mobileUI }
         <div id="alti-temp">
             <span id="altitude"><h3>⛰️ {groundElevation}m</h3></span>
+            <div id="status" style="text-align: center; font-size: 12px; color: #7f8c8d;">{@html textStatus}</div>
             <span id="temperature"><h3>🌡️ {groundTemperature}°C</h3></span>
         </div>
+    {:else}
+        <div id="status" style="text-align: center; font-size: 12px; color: #7f8c8d;">{@html textStatus}</div>
     {/if}
-    <div id="status" style="text-align: center; font-size: 12px; color: #7f8c8d;">{@html textStatus}</div>
     <p></p>
     <div id="info"><a href="https://github.com/01ive/windy-plugin-aero-clear">ℹ️</a></div>
 </section>
@@ -186,6 +189,7 @@
                     W.map.map.setView([lat, lon], 12, { animate: false });
                 });
             }
+            
             currentPosition = userFavs[val].name || userFavs[val].title || 'Favori ' + (parseInt(val)+1);
             event.target.value = 'current'; // Réinitialise visuellement le sélecteur
             fetchWindGrid(selectedFav.lat, selectedFav.lon);
@@ -300,9 +304,10 @@
         
         if (mobileUI) {
             const coords = store.get('mapCoords');
-            if (coords) {
+            if (coords && (!lastSetPickerLocation || lastSetPickerLocation.lat !== coords.lat || lastSetPickerLocation.lon !== coords.lon)) {
                 newLat = coords.lat;
                 newLon = coords.lon;
+                lastSetPickerLocation = coords;
             }
         } else {
             const loc = store.get('pickerLocation');
@@ -323,7 +328,6 @@
             debounceTimer = setTimeout(() => {
                 fetchWindGrid(lat, lon);
             }, 400);
-
             currentPosition = `📍 ${lat.toFixed(4)}, ${lon.toFixed(4)}`;
         }
     };

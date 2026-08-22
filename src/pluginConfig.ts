@@ -2,7 +2,7 @@ import type { ExternalPluginConfig } from '@windy/interfaces';
 
 const config: ExternalPluginConfig = {
     name: 'windy-plugin-aero-clear',
-    version: '0.0.1',
+    version: '0.0.2',
     icon: '🦅',
     title: 'Aero Clear',
     description: 'Airgram and emagram to easily go to fly.',
@@ -11,7 +11,7 @@ const config: ExternalPluginConfig = {
     desktopUI: 'rhpane',
     mobileUI: 'small',
     routerPath: '/aero-clear',
-    private: true,
+    private: false,
 };
 
 export default config;
