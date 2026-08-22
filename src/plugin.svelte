@@ -35,27 +35,27 @@
     </div>
 
     <div id="config-modal">
-        <h3>Configuration</h3>
+        <h2>Configuration</h2>
         <div class="config-section">
-            <strong>Vents Table (km/h)</strong>
-            <div class="config-row"><label>Faible (<span class="wind-light">Vert</span>)</label><input type="number" id="cfg-wind-light" step="1"></div>
-            <div class="config-row"><label>Modéré (<span class="wind-mod">Jaune</span>)</label><input type="number" id="cfg-wind-mod" step="1"></div>
-            <div class="config-row"><label>Fort (<span class="wind-strong">Orange</span>)</label><input type="number" id="cfg-wind-strong" step="1"></div>
-            <div class="config-row"><label>Très fort (<span class="wind-gale">Rouge</span>)</label><input type="number" id="cfg-wind-gale" step="1"></div>
+            <h3>Wind table (km/h)</h3>
+            <div class="config-row"><label>Low (<span class="wind-light">Vert</span>)</label><input type="number" id="cfg-wind-light" step="1"></div>
+            <div class="config-row"><label>Medium (<span class="wind-mod">Jaune</span>)</label><input type="number" id="cfg-wind-mod" step="1"></div>
+            <div class="config-row"><label>Strong (<span class="wind-strong">Orange</span>)</label><input type="number" id="cfg-wind-strong" step="1"></div>
+            <div class="config-row"><label>Very strong (<span class="wind-gale">Rouge</span>)</label><input type="number" id="cfg-wind-gale" step="1"></div>
         </div>
         <div class="config-section">
-            <strong>Émagramme (°C / 100m)</strong>
-            <div class="config-row"><label>Seuil Vert (≥)</label><input type="number" id="cfg-lapse1" step="0.1"></div>
-            <div class="config-row"><label>Seuil Jaune (≥)</label><input type="number" id="cfg-lapse2" step="0.1"></div>
-            <div class="config-row"><label>Seuil Orange (≥)</label><input type="number" id="cfg-lapse3" step="0.1"></div>
-            <div class="config-row"><label>Seuil Rouge (≥)</label><input type="number" id="cfg-lapse4" step="0.1"></div>
-            <div class="config-row"><label>Seuil Violet (≥)</label><input type="number" id="cfg-lapse5" step="0.1"></div>
+            <h3>Emagram (°C / 100m)</h3>
+            <div class="config-row"><label>Threshold green (≥)</label><input type="number" id="cfg-lapse1" step="0.1"></div>
+            <div class="config-row"><label>Threshold yellow (≥)</label><input type="number" id="cfg-lapse2" step="0.1"></div>
+            <div class="config-row"><label>Threshold orange (≥)</label><input type="number" id="cfg-lapse3" step="0.1"></div>
+            <div class="config-row"><label>Threshold red (≥)</label><input type="number" id="cfg-lapse4" step="0.1"></div>
+            <div class="config-row"><label>Threshold purple (≥)</label><input type="number" id="cfg-lapse5" step="0.1"></div>
             <div class="config-row"><label>SKEW_FACTOR</label><input type="number" id="cfg-skew" step="0.01"></div>
-            <div class="config-row"><label>Surchauffe particule (°C)</label><input type="number" id="cfg-offset" step="0.1"></div>
+            <div class="config-row"><label>Particle heating (°C)</label><input type="number" id="cfg-offset" step="0.1"></div>
         </div>
         <div class="config-actions">
-            <button class="btn-cancel" id="cfg-cancel" on:click={closeConfig}>Annuler</button>
-            <button class="btn-save" id="cfg-save" on:click={saveConfig}>Appliquer</button>
+            <button class="btn-cancel" id="cfg-cancel" on:click={closeConfig}>Cancel</button>
+            <button class="btn-save" id="cfg-save" on:click={saveConfig}>Apply</button>
         </div>
     </div>
 
@@ -94,12 +94,12 @@
 
     // mameteo modules and CSS
     import { openConfig, closeConfig, saveConfig } from "../maMeteo/src/config.js"
-    import '../maMeteo/src/config.css';  
+    import './config.css';  
 
     import { updateActiveLevels } from '../maMeteo/src/common.js'
 
     import { selectedHourIndex, setSelectedHourIndex, setCallBackOnClick, renderGrid } from "../maMeteo/src/table.js"
-    import '../maMeteo/src/table.css';
+    import './table.css';
 
     import { drawSounding } from "../maMeteo/src/sounding.js"
     import '../maMeteo/src/sounding.css';
@@ -233,7 +233,7 @@
 
             setLocalInfo();
             textStatus = `
-                        <strong>Model info</strong><br>
+                        <h3>Model info</h3>
                         ref time: ${forecast.data.header.refTime}<br>
                         update time: ${forecast.data.header.update}<br>
                         elevation: ${forecast.data.header.modelElevation}m
@@ -375,17 +375,19 @@
     .location-selector { max-width: 140px; text-overflow: ellipsis; white-space: nowrap; overflow: hidden; }
 
     .model-selector {
-        padding: 4px 8px;
         font-size: 13px;
         cursor: pointer;
-        border: 1px solid #ccc;
-        border-radius: 6px;
-        background-color: #fff;
-        color: #2980b9;
-        font-weight: bold;
+        border-radius: 20px;
+        background-color: var(--color-gray-dark);
+        color: var(--color-text-primary);
+        text-align: center;
         transition: all 0.2s;
     }
-    .model-selector:hover { background-color: #e8f4f8; border-color: #2980b9; }
+    .model-selector:hover { background-color: var(--color-orange); }
+
+    optgroup, option {
+        background-color: var(--color-gray-dark);
+    }
 
     #config-btn { background: none; border: none; font-size: 20px; cursor: pointer; //transition: transform 0.3s ease; 
         display: inline-flex;
@@ -403,29 +405,22 @@
     }
     
     #toggle-step-btn {
-        padding: 4px 8px;
         font-size: 13px;
         cursor: pointer;
-        border: 1px solid #ccc;
-        border-radius: 6px;
-        background-color: #fff;
-        color: #2980b9;
-        font-weight: bold;
+        border-radius: 20px;
+        background-color: var(--color-gray-dark);
+        color: var(--color-text-primary);
         transition: all 0.2s;
     }
-    #toggle-step-btn:hover { background-color: #e8f4f8; border-color: #2980b9; }
+    #toggle-step-btn:hover { background-color: var(--color-orange); }
     
     #config-modal {
         right: 15px;
         left: auto;
     }
 
-    :global(.y-axis) {
-        color: #000000;
-    }
-
-    .box { margin-top: 10px; padding: 12px; background-color: rgba(0, 0, 0, 0.05); border: 1px solid rgba(0, 0, 0, 0.1); border-radius: 6px; font-size: 0.95em; line-height: 1.5; }
-    .wind-box { background-color: rgba(41, 128, 185, 0.1); border-color: rgba(41, 128, 185, 0.2); padding: 10px; overflow: hidden; }
+    // .box { margin-top: 10px; padding: 12px; background-color: rgba(0, 0, 0, 0.05); border: 1px solid rgba(0, 0, 0, 0.1); border-radius: 6px; font-size: 0.95em; line-height: 1.5; }
+    // .wind-box { background-color: rgba(41, 128, 185, 0.1); border-color: rgba(41, 128, 185, 0.2); padding: 10px; overflow: hidden; }
 
     /* LÉGENDE MAMETEO */
     .legend-box { font-size: 11px; display: flex; justify-content: center; gap: 15px; margin-top: 8px; color: #555; padding-bottom: 10px;}
@@ -451,4 +446,14 @@
         display: flex;
         justify-content: space-between;
     }
+
+    :global(.chart-container) {
+        background-color: unset;
+        color: unset;
+        text-shadow: unset;
+    }
+
+    :root {
+        --color-canvas-text: white;
+        }
 </style>
