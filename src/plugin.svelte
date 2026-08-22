@@ -119,7 +119,7 @@
     let lat: number | null = null;
     let lon: number | null = null;
     let lastSetTimestamp: number = 0;
-    let lastSetPickerLocation: number = 0;
+    let lastSetPickerLocation: { lat: number; lon: number } | null = null;
 
     // Svelte variables
     let currentStep = 3;
@@ -164,30 +164,16 @@
         if (val !== 'current') {
             const selectedFav = userFavs[parseInt(val)];
             if (selectedFav && selectedFav.lat !== undefined && selectedFav.lon !== undefined) {
-                // store.set('pickerLocation', { lat: selectedFav.lat, lon: selectedFav.lon });
                 store.set('mapCoords', { lat: selectedFav.lat, lon: selectedFav.lon, zoom: 12, source: 'globe' });
-                
+                store.set('pickerLocation', { lat: selectedFav.lat, lon: selectedFav.lon });
+
                 lat = selectedFav.lat;
                 lon = selectedFav.lon;
-
-                // Centre physiquement la carte sur le nouveau point
                 const W = (window as any).W;
-                const pluginWindows = document.querySelector(`#plugin-content`) as HTMLDivElement;
-                if (W && W.map.map) {
-                    if (typeof W.map.map.panTo === 'function') {
-                        W.map.map.setZoom(12);
-                        if (W.rootScope.isMobileOrTablet && pluginWindows) {
-                            // const pickerDot = document.querySelector(`#picker-dot`) as HTMLDivElement;
-                            // const mapLatHeight = W.map.map.getBounds().getSouth() - W.map.map.getBounds().getNorth();
-                            // const ratioLat = (mapLatHeight / W.map.map.getSize().y);
-                            // const newLat = selectedFav.lat + ((W.map.map.getSize().y / 2) - (pickerDot.offsetTop + (pickerDot.offsetHeight / 2))) * ratioLat;
-                            // W.map.map.panTo({ lng: selectedFav.lon, lat: newLat });
-                            W.map.map.panTo([selectedFav.lat, selectedFav.lon]);
-                        } else {
-                            W.map.map.panTo([selectedFav.lat, selectedFav.lon]);
-                        }
-                    }
-                }
+
+                requestAnimationFrame(() => {
+                    W.map.map.setView([lat, lon], 12, { animate: false });
+                });
             }
             currentPosition = userFavs[val].name || userFavs[val].title || 'Favori ' + (parseInt(val)+1);
             event.target.value = 'current'; // Réinitialise visuellement le sélecteur
@@ -310,7 +296,7 @@
             }
         } else {
             const loc = store.get('pickerLocation');
-            if( (lastSetPickerLocation.lat != loc.lat) || (lastSetPickerLocation.lon != loc.lon)){
+            if (loc && (!lastSetPickerLocation || lastSetPickerLocation.lat !== loc.lat || lastSetPickerLocation.lon !== loc.lon)) {
                 newLat = loc.lat;
                 newLon = loc.lon;
                 lastSetPickerLocation = loc;
@@ -354,6 +340,10 @@
         }
         try { store.on('timestamp', onSettingsChange); } catch(e) {}
         try { store.on('product', onSettingsChange); } catch(e) {}
+
+        const coords = store.get('mapCoords');
+        currentPosition = `📍 ${coords.lat.toFixed(4)}, ${coords.lon.toFixed(4)}`;
+        fetchWindGrid(coords.lat, coords.lon);
     });
 
     onDestroy(() => { 
