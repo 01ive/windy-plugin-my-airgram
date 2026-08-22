@@ -2,12 +2,16 @@
     { title }
 </div>
 <section class="plugin__content" id="plugin-content">
+    {#if !mobileUI}
     <div
         class="plugin__title plugin__title--chevron-back"
         on:click={ () => bcast.emit('rqstOpen', 'menu') }
     >
     🦅 { title }
-    </div>
+    </div>        
+    {:else}
+    🦅 { title }
+    {/if}
     
     <div class="top-bar">
         <select class="model-selector location-selector" on:change={onFavChange}>
@@ -59,11 +63,11 @@
         </div>
     </div>
 
-    {#if groundElevation != null}
-    <div id="alti-temp">
-        <span id="altitude"><h3>⛰️ {groundElevation}m</h3></span>
-        <span id="temperature"><h3>🌡️ {groundTemperature}°C</h3></span>
-    </div>
+    {#if (groundElevation != null) && !mobileUI }
+        <div id="alti-temp">
+            <span id="altitude"><h3>⛰️ {groundElevation}m</h3></span>
+            <span id="temperature"><h3>🌡️ {groundTemperature}°C</h3></span>
+        </div>
     {/if}
 
     <div class="grid-chart-layout">
@@ -76,16 +80,22 @@
             </div>
         </div>
     </div>
+    {#if (groundElevation != null) && mobileUI }
+        <div id="alti-temp">
+            <span id="altitude"><h3>⛰️ {groundElevation}m</h3></span>
+            <span id="temperature"><h3>🌡️ {groundTemperature}°C</h3></span>
+        </div>
+    {/if}
     <div id="status" style="text-align: center; font-size: 12px; color: #7f8c8d;">{@html textStatus}</div>
     <p></p>
-    <div id="info"><a href="https://github.com/01ive/windy-plugin-my-airgram">ℹ️</a></div>
+    <div id="info"><a href="https://github.com/01ive/windy-plugin-aero-clear">ℹ️</a></div>
 </section>
 
 <script lang="ts">
     // Windy modules
     import bcast from "@windy/broadcast";
     import store from "@windy/store";
-    import { getMeteogramForecastData, getPointForecastData } from "@windy/fetch";
+    import { getMeteogramForecastData, getPointForecastData, getDetailPointForecastData } from "@windy/fetch";
     import favsModule from "@windy/userFavs";
     import { onDestroy, onMount } from 'svelte';
 
@@ -122,6 +132,7 @@
     let lastSetPickerLocation: { lat: number; lon: number } | null = null;
 
     // Svelte variables
+    let mobileUI = false;
     let currentStep = 3;
     let currentPosition: string = "";
     let currentModel: string = "";
@@ -287,8 +298,7 @@
         let newLat = null;
         let newLon = null;
         
-        const W = (window as any).W;
-        if (W.rootScope.isMobileOrTablet) {
+        if (mobileUI) {
             const coords = store.get('mapCoords');
             if (coords) {
                 newLat = coords.lat;
@@ -333,7 +343,8 @@
         setCallBackOnClick(selectHour);
 
         const W = (window as any).W;
-        if (W.rootScope.isMobileOrTablet) {
+        mobileUI = W.rootScope.isMobileOrTablet;
+        if (mobileUI) {
             try { store.on('mapCoords', updateLocation); } catch(e) {}
         } else {
             try { store.on('pickerLocation', updateLocation); } catch(e) {}
@@ -342,13 +353,14 @@
         try { store.on('product', onSettingsChange); } catch(e) {}
 
         const coords = store.get('mapCoords');
+        lat = coords.lat;
+        lon = coords.lon;
         currentPosition = `📍 ${coords.lat.toFixed(4)}, ${coords.lon.toFixed(4)}`;
         fetchWindGrid(coords.lat, coords.lon);
     });
 
     onDestroy(() => { 
-        const W = (window as any).W;
-        if (W.rootScope.isMobileOrTablet) {
+        if (mobileUI) {
             try { store.off('mapCoords', updateLocation); } catch(e) {}
         } else {
             try { store.off('pickerLocation', updateLocation); } catch(e) {}
@@ -359,6 +371,10 @@
 </script>
 
 <style lang="less">    
+    :global(#plugin-windy-plugin-aero-clear) {
+        min-height: 50dvh !important;
+    }
+
     .greeting { margin-bottom: 0px; display: inline-block; }
     .top-bar { display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px; }
     
@@ -445,5 +461,13 @@
 
     :root {
         --color-canvas-text: white;
+    }
+
+    @media (max-width: 768px) {
+        :global(.hour-header) {
+            display: None;
         }
+    }
+
+    
 </style>

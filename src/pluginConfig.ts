@@ -1,16 +1,16 @@
 import type { ExternalPluginConfig } from '@windy/interfaces';
 
 const config: ExternalPluginConfig = {
-    name: 'windy-plugin-my-airgram',
-    version: '0.0.2',
+    name: 'windy-plugin-aero-clear',
+    version: '0.0.1',
     icon: '🦅',
-    title: 'Airgram for humans',
-    description: 'Airgram to easily flight plans.',
+    title: 'Aero Clear',
+    description: 'Airgram and emagram to easily go to fly.',
     author: '01ive',
-    repository: 'https://github.com/01ive/windy-plugin-my-airgram',
+    repository: 'https://github.com/01ive/windy-plugin-aero-clear.git',
     desktopUI: 'rhpane',
-    mobileUI: 'fullscreen',
-    routerPath: '/my-plugin',
+    mobileUI: 'small',
+    routerPath: '/aero-clear',
     private: true,
 };
 
